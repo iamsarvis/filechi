@@ -293,15 +293,16 @@ const CRYPT_HASH_SHA1 = 'sha1';
      */
    public function Encrypt($data) {
         $data = (string) $data;
+        $encrypt = '';
         for ($i=0;$i<strlen($data);$i++)
-            @$encrypt .= $data[$i] ^ $this->key[$i % strlen($this->key)];
+            $encrypt .= $data[$i] ^ $this->key[$i % strlen($this->key)];
         if ($this->mode == self::CRYPT_MODE_BINARY)
-            return @$encrypt;
-        @$encrypt = base64_encode(@$encrypt);
+            return $encrypt;
+        $encrypt = base64_encode($encrypt);
         if ($this->mode == self::CRYPT_MODE_BASE64)
-            return @$encrypt;
+            return $encrypt;
         if ($this->mode == self::CRYPT_MODE_HEXADECIMAL)
-            return $this->EncodeHexadecimal(@$encrypt);
+            return $this->EncodeHexadecimal($encrypt);
     }
 
     // }}}
@@ -321,9 +322,10 @@ const CRYPT_HASH_SHA1 = 'sha1';
             $crypt = $this->DecodeHexadecimal($crypt);
         if ($this->mode != self::CRYPT_MODE_BINARY)
             $crypt = (string)base64_decode($crypt);
+        $data = '';
         for ($i=0;$i<strlen($crypt);$i++)
-            @$data .= $crypt[$i] ^ $this->key[$i % strlen($this->key)];
-        return @$data;
+            $data .= $crypt[$i] ^ $this->key[$i % strlen($this->key)];
+        return $data;
     }
 
     // }}}
@@ -357,9 +359,10 @@ const CRYPT_HASH_SHA1 = 'sha1';
      */
     protected function EncodeHexadecimal($data) {
         $data = (string) $data;
+        $hexcrypt = '';
         for ($i=0;$i<strlen($data);$i++)
-            @$hexcrypt .= dechex(ord($data[$i]));
-        return @$hexcrypt;
+            $hexcrypt .= dechex(ord($data[$i]));
+        return $hexcrypt;
     }
 
     // }}}
@@ -375,9 +378,10 @@ const CRYPT_HASH_SHA1 = 'sha1';
      */
     protected function DecodeHexadecimal($hexcrypt) {
         $hexcrypt = (string) $hexcrypt;
+        $data = '';
         for ($i=0;$i<strlen($hexcrypt);$i+=2)
-            @$data .= chr(hexdec(substr($hexcrypt, $i, 2)));
-        return @$data;
+            $data .= chr(hexdec(substr($hexcrypt, $i, 2)));
+        return $data;
     }
 
     // }}}
