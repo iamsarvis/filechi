@@ -1,13 +1,13 @@
 <?php
 
 /**
- * $Id$
- * $Revision$
- * $Date$
+ * $Id: hacklogra.class.php 1863150 2018-04-23 18:54:26Z ihacklog $
+ * $Revision: 1863150 $
+ * $Date: 2018-04-23 18:54:26 +0000 (Mon, 23 Apr 2018) $
  * @package Hacklog Remote Attachment
  * @encoding UTF-8
  * @author 荒野无灯 <HuangYeWuDeng>
- * @link http://ihacklog.com
+ * @link http://80x86.io
  * @copyright Copyright (C) 2011 荒野无灯
  * @license http://www.gnu.org/licenses/
  */
@@ -180,7 +180,7 @@ class hacklogra
 	 * @param type $message
 	 * @return type 
 	 */
-	function handle_upload_error($message)
+	static function handle_upload_error($message)
 	{
 		return array('error' => $message);
 	}
@@ -236,6 +236,7 @@ class hacklogra
 		register_activation_hook(HACKLOG_RA_LOADER, array(__CLASS__, 'my_activation'));
 		register_deactivation_hook(HACKLOG_RA_LOADER, array(__CLASS__, 'my_deactivation'));
 		$opts = get_option(self::opt_primary);
+		if (!is_array($opts)) return;
 		self::$ftp_user = $opts['ftp_user'];
 		self::$ftp_pwd = $opts['ftp_pwd'];
 		self::$ftp_server = $opts['ftp_server'];
@@ -351,6 +352,7 @@ class hacklogra
 				add_filter('wp_handle_upload', array(__CLASS__, 'upload_and_send'));
 				add_filter('media_send_to_editor', array(__CLASS__, 'replace_attachurl'), -999);
 				add_filter('attachment_link', array(__CLASS__, 'replace_baseurl'), -999);
+                add_filter('wp_calculate_image_srcset', array(__CLASS__, 'replace_attachurl_srcset'), -999, 5);
 				//生成缩略图后立即上传生成的文件并删除本地文件,this must after watermark generate
 				add_filter('wp_update_attachment_metadata', array(__CLASS__, 'upload_images'), 999);
 				//删除远程附件
@@ -388,7 +390,7 @@ class hacklogra
 		if (!defined('FS_TIMEOUT'))
 			define('FS_TIMEOUT', 30);
 
-		if (is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code())
+		if (is_wp_error(self::$fs->errors) && self::$fs->errors->get_error_code())
 			return false;
 
 		if (!self::$fs->connect())
@@ -460,6 +462,28 @@ class hacklogra
 		$html = str_replace(self::$local_url, self::$remote_url, $html);
 		return $html;
 	}
+
+    /**
+     * @param $sources
+     * @param $size_array
+     * @param $image_src
+     * @param $image_meta
+     * @param $attachment_id
+     * @return mixed
+     */
+    public static function replace_attachurl_srcset($sources, $size_array, $image_src, $image_meta, $attachment_id)
+    {
+        $local_url = self::$local_url;
+        // using the same logic as WP
+        global $wp_version;
+        if ( version_compare($wp_version, "4.5", '>=') && is_ssl() && 'https' !== substr( $local_url, 0, 5 ) && parse_url( $local_url, PHP_URL_HOST ) === $_SERVER['HTTP_HOST'] ) {
+            $local_url = set_url_scheme( $local_url, 'https' );
+        }
+        foreach((array) $sources as $index => $source) {
+            $sources[$index]['url'] = str_replace($local_url, self::$remote_url, $source['url']);
+        }
+        return $sources;
+    }
 
 	/**
 	 * the hook is in function media_send_to_editor
@@ -737,7 +761,7 @@ class hacklogra
 	  add_action( 'admin_notices', 'check_current_screen' );
 	 * @return void
 	 */
-	public function add_my_contextual_help()
+	public static function add_my_contextual_help()
 	{
 		//WP_Screen id:  'settings_page_hacklog-remote-attachment/loader' 
 		$identifier = md5(HACKLOG_RA_LOADER);
@@ -746,7 +770,7 @@ class hacklogra
 				'<p>' . __('<strong>Remote base URL</strong> is the URL to your Ftp root path.', self::textdomain) . '</p>' .
 				'<p>' . __('<strong>FTP Remote path</strong> is the relative path to your FTP main directory.Use "<strong>.</strong>" for FTP main(root) directory.You can use sub-directory Like <strong>wp-files</strong>', self::textdomain) . '</p>' .
 				'<p>' . __('<strong>HTTP Remote path</strong> is the relative path to your HTTP main directory.Use "<strong>.</strong>" for HTTP main(root) directory.You can use sub-directory Like <strong>wp-files</strong>', self::textdomain) . '</p>' .
-				'<p><strong>' . __('For more information:', self::textdomain) . '</strong> ' . __('Please visit the <a href="http://ihacklog.com/?p=5001" target="_blank">Plugin Home Page</a>', self::textdomain) . '</p>';
+				'<p><strong>' . __('For more information:', self::textdomain) . '</strong> ' . __('Please visit the <a href="http://80x86.io/?p=5001" target="_blank">Plugin Home Page</a>', self::textdomain) . '</p>';
 		$args = array(
 			'title' => sprintf(__("%s Help", self::textdomain), self::plugin_name),
 			'id' => $current_screen_id,
@@ -825,6 +849,7 @@ class hacklogra
 		if (isset($_GET['hacklog_do']))
 		{
 			global $wpdb;
+			$sql = '';
 			switch ($_GET['hacklog_do'])
 			{
 				case 'replace_old_post_attach_url':
@@ -838,7 +863,7 @@ class hacklogra
 					$sql = "UPDATE $wpdb->posts set post_content=replace(post_content,'$orig_url','$new_url')";
 					break;
 			}
-			if (($num_rows = $wpdb->query($sql)) > 0)
+			if ($sql && ($num_rows = $wpdb->query($sql)) > 0)
 			{
 				$msg = sprintf('%d ' . __('posts has been updated.', self::textdomain), $num_rows);
 			}
@@ -849,8 +874,7 @@ class hacklogra
 		}
 		?>
 		<div class="wrap">
-			<?php screen_icon(); ?>
-			<h2> <?php _e('Hacklog Remote Attachment Options', self::textdomain) ?></h2>
+				<h2> <?php _e('Hacklog Remote Attachment Options', self::textdomain) ?></h2>
 			<?php
 			self::show_message($msg, 'm');
 			self::show_message($error, 'e');
