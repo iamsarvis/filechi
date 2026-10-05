@@ -1,0 +1,63 @@
+# Copyright (C) 2026 FileChi Team
+# This file is distributed under the GPL-2.0-or-later.
+msgid ""
+msgstr ""
+"Project-Id-Version: FileChi 1.0.0\n"
+"Report-Msgid-Bugs-To: https://github.com/iamsarvis/filechi/issues\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-10-05T20:00:00+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: FileChi\n"
+"X-Domain: filechi\n"
+
+#: filechi.php:40
+msgid "FileChi requires PHP %1$s or higher. Your server is running PHP %2$s. Please upgrade your PHP version."
+msgstr ""
+
+#: filechi.php:55
+msgid "FileChi requires WordPress %s or higher. Please update your WordPress installation."
+msgstr ""
+
+#: includes/class-filechi-admin.php:32
+msgid "FileChi Remote Storage"
+msgstr ""
+
+#: includes/class-filechi-admin.php:33
+msgid "FileChi"
+msgstr ""
+
+#: includes/storage/class-filechi-storage-sftp.php:79
+msgid "SFTP host cannot be empty."
+msgstr ""
+
+#: includes/storage/class-filechi-storage-sftp.php:97
+msgid "SFTP login failed. Please check your credentials."
+msgstr ""
+
+#: includes/storage/class-filechi-storage-ftps.php:74
+msgid "The PHP ftp_ssl_connect() function is not available. Please ensure the PHP OpenSSL and FTP extensions are enabled."
+msgstr ""
+
+#: includes/storage/class-filechi-storage-ftps.php:82
+msgid "FTPS host cannot be empty."
+msgstr ""
+
+#: includes/storage/class-filechi-storage-ftps.php:88
+msgid "Failed to establish secure FTPS connection to %1$s:%2$d (Timeout: %3$ds)."
+msgstr ""
+
+#: includes/storage/class-filechi-storage-ftps.php:95
+msgid "FTPS authentication failed. Please check your username and password."
+msgstr ""
+
+#: includes/storage/class-filechi-storage-s3.php:409
+msgid "S3 endpoint URL cannot be empty."
+msgstr ""
+
+#: includes/storage/class-filechi-storage-s3.php:417
+msgid "S3 bucket name cannot be empty."
+msgstr ""
