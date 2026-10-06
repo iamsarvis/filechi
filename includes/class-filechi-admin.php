@@ -24,6 +24,8 @@ class FileChi_Admin {
 	public function __construct() {
 		add_action('admin_menu', array($this, 'register_admin_menu'));
 		add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
+		add_action('admin_notices', array($this, 'render_admin_notices'));
+		add_action('wp_ajax_filechi_dismiss_protected_notice', array($this, 'ajax_dismiss_protected_notice'));
 	}
 
 	/**
@@ -124,5 +126,46 @@ class FileChi_Admin {
 			</div>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Renders security notices in wp-admin if a protected WooCommerce file cannot be offloaded.
+	 */
+	public function render_admin_notices() {
+		if (!current_user_can('manage_options')) {
+			return;
+		}
+
+		$notice = get_option('filechi_protected_path_missing_notice');
+		if ($notice) {
+			$provider_name = is_array($notice) ? ($notice['provider_name'] ?? 'SFTP/FTPS') : 'SFTP/FTPS';
+			$att_id        = is_array($notice) ? ($notice['attachment_id'] ?? 0) : 0;
+			?>
+			<div class="notice notice-warning is-dismissible filechi-notice">
+				<p>
+					<strong><?php esc_html_e('FileChi Security Notice:', 'filechi'); ?></strong>
+					<?php
+					echo esc_html(sprintf(
+						/* translators: 1: Attachment ID, 2: Provider name */
+						__('A protected WooCommerce file (attachment #%1$d) was kept on local disk and NOT offloaded because provider "%2$s" does not have a Protected Path configured. Protected downloads must never be placed in a public web root.', 'filechi'),
+						$att_id,
+						$provider_name
+					));
+					?>
+				</p>
+			</div>
+			<?php
+		}
+	}
+
+	/**
+	 * AJAX handler to dismiss the protected path notice.
+	 */
+	public function ajax_dismiss_protected_notice() {
+		check_ajax_referer('filechi_admin_nonce', 'nonce');
+		if (current_user_can('manage_options')) {
+			delete_option('filechi_protected_path_missing_notice');
+		}
+		wp_send_json_success();
 	}
 }

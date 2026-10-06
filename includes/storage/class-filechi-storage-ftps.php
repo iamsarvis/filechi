@@ -118,7 +118,16 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 		$remote_path = str_replace(array('\\', '../', '..\\'), array('/', '', ''), $remote_path);
 		$remote_path = ltrim($remote_path, '/');
 
-		$root = trim($this->settings['root_path']);
+		// If this is a protected WooCommerce file, route to protected_path (outside web root)
+		if (class_exists('FileChi_Media') && FileChi_Media::is_protected_file($remote_path)) {
+			$prot_root = trim($this->settings['protected_path'] ?? '');
+			if (!empty($prot_root)) {
+				$prot_root = rtrim(str_replace('\\', '/', $prot_root), '/');
+				return $prot_root . '/' . $remote_path;
+			}
+		}
+
+		$root = trim($this->settings['root_path'] ?? '');
 		if (!empty($root)) {
 			$root = rtrim(str_replace('\\', '/', $root), '/');
 			return $root . '/' . $remote_path;
@@ -324,6 +333,38 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 				'message' => sprintf(__('FTPS error: %s', 'filechi'), $e->getMessage()),
 				'details' => null,
 			);
+		}
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function stream_to_output($remote_path, $chunk_size = 1048576) {
+		try {
+			$conn             = $this->get_connection();
+			$full_remote_path = $this->resolve_path($remote_path);
+
+			$size = @ftp_size($conn, $full_remote_path);
+			if ($size === -1) {
+				return false;
+			}
+
+			$fp = fopen('php://output', 'wb');
+			if (!$fp) {
+				return false;
+			}
+
+			$result = @ftp_fget($conn, $fp, $full_remote_path, FTP_BINARY);
+			fclose($fp);
+
+			if (ob_get_level() > 0) {
+				ob_flush();
+			}
+			flush();
+
+			return $result;
+		} catch (\Exception $e) {
+			return false;
 		}
 	}
 }

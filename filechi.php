@@ -159,8 +159,27 @@ function filechi_handle_signed_download() {
 		wp_die(esc_html__('Storage driver unavailable.', 'filechi'), 500);
 	}
 
-	// Redirect to direct URL or stream
-	$direct_url = $driver->get_url($file);
-	wp_redirect($direct_url);
+	// Clear all active output buffers to prevent corruption and reduce memory usage
+	while (ob_get_level() > 0) {
+		ob_end_clean();
+	}
+
+	$filename  = basename($file);
+	$file_type = wp_check_filetype($filename);
+	$mime_type = !empty($file_type['type']) ? $file_type['type'] : 'application/octet-stream';
+
+	// Send strict streaming download headers
+	nocache_headers();
+	header('Content-Type: ' . $mime_type);
+	header('Content-Disposition: attachment; filename="' . rawurlencode($filename) . '"');
+	header('Cache-Control: private, no-transform, no-store, must-revalidate');
+	header('Pragma: no-cache');
+	header('Expires: 0');
+
+	// Stream chunk by chunk directly to output without loading file into memory
+	$success = $driver->stream_to_output($file, 1048576);
+	if (!$success) {
+		wp_die(esc_html__('Failed to stream remote file.', 'filechi'), 500);
+	}
 	exit;
 }

@@ -70,4 +70,13 @@ interface FileChi_Storage_Interface {
 	 * @return array ['success' => bool, 'message' => string, 'details' => mixed]
 	 */
 	public function test_connection();
+
+	/**
+	 * Streams a remote file directly to output in chunks without loading into PHP memory.
+	 *
+	 * @param string $remote_path Relative remote path/key.
+	 * @param int    $chunk_size Chunk size in bytes (default 1048576 = 1 MiB).
+	 * @return bool True on success, false on failure.
+	 */
+	public function stream_to_output($remote_path, $chunk_size = 1048576);
 }

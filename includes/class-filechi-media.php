@@ -170,6 +170,35 @@ class FileChi_Media {
 			}
 		}
 
+		// Guard: If any file is protected and provider is SFTP/FTPS without protected_path, refuse offload
+		$has_protected = false;
+		foreach ($files_to_offload as $rel_path => $abs_path) {
+			if (self::is_protected_file($rel_path, $attachment_id)) {
+				$has_protected = true;
+				break;
+			}
+		}
+
+		if ($has_protected && ($provider['type'] === 'sftp' || $provider['type'] === 'ftps')) {
+			$protected_path = trim($provider['settings']['protected_path'] ?? '');
+			if (empty($protected_path)) {
+				update_option('filechi_protected_path_missing_notice', array(
+					'attachment_id' => $attachment_id,
+					'provider_name' => $provider['name'] ?? $provider['type'],
+					'time'          => time(),
+				));
+				FileChi_DB::log_transfer(
+					$attachment_id,
+					$provider['id'],
+					$attached_file,
+					filesize($main_local),
+					'failed',
+					__('Protected WooCommerce file cannot be offloaded: SFTP/FTPS provider has no protected_path configured.', 'filechi')
+				);
+				return false;
+			}
+		}
+
 		// Phase 1: Upload and verify every file
 		$all_succeeded  = true;
 		$uploaded_files = array();
@@ -239,6 +268,42 @@ class FileChi_Media {
 	}
 
 	/**
+	 * Determines whether a file/attachment is protected (e.g. WooCommerce downloadable product file).
+	 *
+	 * @param string $path File path or relative key.
+	 * @param int    $attachment_id Optional attachment post ID.
+	 * @return bool
+	 */
+	public static function is_protected_file($path, $attachment_id = 0) {
+		$clean_path = str_replace('\\', '/', $path);
+
+		// WooCommerce protected uploads directory
+		if (strpos($clean_path, 'woocommerce_uploads') !== false) {
+			return true;
+		}
+
+		if ($attachment_id > 0) {
+			if (get_post_meta($attachment_id, '_filechi_is_protected', true)) {
+				return true;
+			}
+
+			global $wpdb;
+			if (!empty($wpdb)) {
+				$filename = basename($clean_path);
+				$found    = $wpdb->get_var($wpdb->prepare(
+					"SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key = '_downloadable_files' AND meta_value LIKE %s LIMIT 1",
+					'%' . $wpdb->esc_like($filename) . '%'
+				));
+				if (!empty($found)) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Rewrites attachment URL to remote storage URL.
 	 *
 	 * @param string $url Original attachment URL.
@@ -261,6 +326,11 @@ class FileChi_Media {
 
 		if (!$driver) {
 			return $url;
+		}
+
+		// Never expose permanent public URLs for protected WooCommerce downloads
+		if (self::is_protected_file($attached_file, $attachment_id)) {
+			return $driver->get_signed_url($attached_file);
 		}
 
 		return $driver->get_url($attached_file);

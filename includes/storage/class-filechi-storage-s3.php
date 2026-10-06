@@ -268,7 +268,8 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 		$mime_type = wp_check_filetype($local_file)['type'] ?: 'application/octet-stream';
 		$headers   = array('Content-Type' => $mime_type);
 
-		if (!empty($this->settings['public_acl'])) {
+		$is_protected = class_exists('FileChi_Media') && FileChi_Media::is_protected_file($remote_path);
+		if (!empty($this->settings['public_acl']) && !$is_protected) {
 			$headers['x-amz-acl'] = 'public-read';
 		}
 
@@ -311,7 +312,8 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 			$headers['Content-Type'] = 'application/octet-stream';
 		}
 
-		if (!empty($this->settings['public_acl'])) {
+		$is_protected = class_exists('FileChi_Media') && FileChi_Media::is_protected_file($remote_path);
+		if (!empty($this->settings['public_acl']) && !$is_protected) {
 			$headers['x-amz-acl'] = 'public-read';
 		}
 
@@ -525,5 +527,53 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 				'body'      => $body,
 			),
 		);
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function stream_to_output($remote_path, $chunk_size = 1048576) {
+		$signed_url = $this->get_signed_url($remote_path, 300);
+
+		// If allow_url_fopen is enabled, stream via fopen in small chunks
+		if (ini_get('allow_url_fopen')) {
+			$handle = @fopen($signed_url, 'rb');
+			if ($handle) {
+				while (!feof($handle)) {
+					$chunk = fread($handle, $chunk_size);
+					if ($chunk === false) {
+						break;
+					}
+					echo $chunk;
+					if (ob_get_level() > 0) {
+						ob_flush();
+					}
+					flush();
+				}
+				fclose($handle);
+				return true;
+			}
+		}
+
+		// Fallback to cURL streaming directly to output
+		if (function_exists('curl_init')) {
+			$ch = curl_init($signed_url);
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
+			curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+			curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $chunk) {
+				echo $chunk;
+				if (ob_get_level() > 0) {
+					ob_flush();
+				}
+				flush();
+				return strlen($chunk);
+			});
+			$success   = curl_exec($ch);
+			$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+			curl_close($ch);
+			return ($success && $http_code >= 200 && $http_code < 300);
+		}
+
+		return false;
 	}
 }

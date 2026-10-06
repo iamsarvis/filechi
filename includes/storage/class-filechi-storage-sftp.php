@@ -109,7 +109,16 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 		$remote_path = str_replace(array('\\', '../', '..\\'), array('/', '', ''), $remote_path);
 		$remote_path = ltrim($remote_path, '/');
 
-		$root = trim($this->settings['root_path']);
+		// If this is a protected WooCommerce file, route to protected_path (outside web root)
+		if (class_exists('FileChi_Media') && FileChi_Media::is_protected_file($remote_path)) {
+			$prot_root = trim($this->settings['protected_path'] ?? '');
+			if (!empty($prot_root)) {
+				$prot_root = rtrim(str_replace('\\', '/', $prot_root), '/');
+				return $prot_root . '/' . $remote_path;
+			}
+		}
+
+		$root = trim($this->settings['root_path'] ?? '');
 		if (!empty($root)) {
 			$root = rtrim(str_replace('\\', '/', $root), '/');
 			return $root . '/' . $remote_path;
@@ -292,6 +301,34 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 				'message' => sprintf(__('SFTP connection error: %s', 'filechi'), $e->getMessage()),
 				'details' => null,
 			);
+		}
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function stream_to_output($remote_path, $chunk_size = 1048576) {
+		try {
+			$sftp             = $this->get_client();
+			$full_remote_path = $this->resolve_path($remote_path);
+
+			if (!$sftp->file_exists($full_remote_path)) {
+				return false;
+			}
+
+			// Stream directly to output without loading file into PHP memory
+			$result = $sftp->get($full_remote_path, function ($chunk) {
+				echo $chunk;
+				if (ob_get_level() > 0) {
+					ob_flush();
+				}
+				flush();
+				return true;
+			});
+
+			return $result !== false;
+		} catch (\Exception $e) {
+			return false;
 		}
 	}
 }

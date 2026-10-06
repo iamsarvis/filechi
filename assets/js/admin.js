@@ -136,6 +136,7 @@
 						private_key: '',
 						passphrase: '',
 						root_path: '',
+						protected_path: '',
 						base_url: '',
 						timeout: 30,
 						// S3 fields
@@ -823,6 +824,13 @@
 							value: s.root_path || '',
 							onChange: (val) => updateSettingField('root_path', val),
 							placeholder: '/var/www/uploads or public_html/wp-files',
+						}),
+						el(TextControl, {
+							label: 'Protected Downloads Path (optional, outside web root)',
+							value: s.protected_path || '',
+							onChange: (val) => updateSettingField('protected_path', val),
+							placeholder: '/home/secure/protected_downloads',
+							help: 'Separate absolute directory outside public web root for WooCommerce protected files.',
 						})
 					),
 
@@ -862,6 +870,13 @@
 							value: s.root_path || '',
 							onChange: (val) => updateSettingField('root_path', val),
 							placeholder: 'public_html/uploads',
+						}),
+						el(TextControl, {
+							label: 'Protected Downloads Path (optional, outside web root)',
+							value: s.protected_path || '',
+							onChange: (val) => updateSettingField('protected_path', val),
+							placeholder: 'protected_downloads',
+							help: 'Separate directory outside public web root for WooCommerce protected files.',
 						})
 					),
 
