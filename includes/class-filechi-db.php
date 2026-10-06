@@ -151,6 +151,9 @@ class FileChi_DB {
 
 		// Encrypt credentials before storing
 		$encrypted_settings = self::encrypt_settings($settings);
+		if (is_wp_error($encrypted_settings)) {
+			return $encrypted_settings;
+		}
 
 		// If this is set as default or the first provider, clear any previous default
 		if ($is_default || $wpdb->get_var("SELECT COUNT(*) FROM {$table}") == 0) {
@@ -179,19 +182,24 @@ class FileChi_DB {
 	/**
 	 * Updates an existing provider profile.
 	 *
+	 * Merges submitted settings over existing settings and protects stored credentials from
+	 * being overwritten by empty strings or failed decryptions.
+	 *
 	 * @param int   $id Provider ID.
 	 * @param array $data New provider data.
-	 * @return bool
+	 * @return bool|WP_Error
 	 */
 	public static function update_provider($id, $data) {
 		global $wpdb;
 		$table = self::get_providers_table();
 		$id    = absint($id);
 
-		$existing = self::get_provider($id, true);
-		if (!$existing) {
+		$existing_row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id = %d", $id), ARRAY_A);
+		if (!$existing_row) {
 			return false;
 		}
+
+		$existing_settings = json_decode($existing_row['settings'], true) ?: array();
 
 		$update = array();
 		$format = array();
@@ -216,18 +224,40 @@ class FileChi_DB {
 		}
 
 		if (isset($data['settings']) && is_array($data['settings'])) {
-			$new_settings = $data['settings'];
+			$submitted = $data['settings'];
 
-			// Preserve existing secret values if masked/placeholder was passed from admin UI
-			foreach (self::$sensitive_keys as $key) {
-				if (isset($new_settings[$key]) && ($new_settings[$key] === '********' || $new_settings[$key] === '')) {
-					$new_settings[$key] = $existing['settings'][$key] ?? '';
+			// Merge submitted settings over existing settings rather than replacing whole settings object
+			$merged_settings = $existing_settings;
+
+			// Remove internal runtime failure markers
+			unset($merged_settings['_decryption_failed']);
+			foreach (self::$sensitive_keys as $skey) {
+				unset($merged_settings[$skey . '_decryption_failed']);
+			}
+
+			// Copy non-sensitive submitted fields
+			foreach ($submitted as $k => $v) {
+				if (!in_array($k, self::$sensitive_keys, true) && $k !== '_decryption_failed') {
+					$merged_settings[$k] = $v;
 				}
 			}
 
-			$encrypted_settings   = self::encrypt_settings($new_settings);
-			$update['settings']   = wp_json_encode($encrypted_settings);
-			$format[]             = '%s';
+			// Handle sensitive keys: never overwrite stored secret with empty value when decryption failed or field was not submitted / was masked
+			foreach (self::$sensitive_keys as $key) {
+				if (isset($submitted[$key])) {
+					$sub_val = (string) $submitted[$key];
+					if ($sub_val !== '' && $sub_val !== '********') {
+						$encrypted = FileChi_Crypto::encrypt($sub_val);
+						if (is_wp_error($encrypted)) {
+							return $encrypted;
+						}
+						$merged_settings[$key] = $encrypted;
+					}
+				}
+			}
+
+			$update['settings'] = wp_json_encode($merged_settings);
+			$format[]           = '%s';
 		}
 
 		$update['updated_at'] = current_time('mysql');
@@ -473,16 +503,20 @@ class FileChi_DB {
 	 * Encrypts sensitive fields in a settings array.
 	 *
 	 * @param array $settings
-	 * @return array
+	 * @return array|WP_Error
 	 */
-	private static function encrypt_settings($settings) {
+	public static function encrypt_settings($settings) {
 		if (!is_array($settings)) {
 			return array();
 		}
 
 		foreach (self::$sensitive_keys as $key) {
-			if (!empty($settings[$key])) {
-				$settings[$key] = FileChi_Crypto::encrypt($settings[$key]);
+			if (isset($settings[$key]) && $settings[$key] !== '' && $settings[$key] !== '********') {
+				$encrypted = FileChi_Crypto::encrypt($settings[$key]);
+				if (is_wp_error($encrypted)) {
+					return $encrypted;
+				}
+				$settings[$key] = $encrypted;
 			}
 		}
 
@@ -490,20 +524,31 @@ class FileChi_DB {
 	}
 
 	/**
-	 * Decrypts sensitive fields in a settings array.
+	 * Decrypts sensitive fields in a settings array and propagates decryption failures explicitly.
 	 *
 	 * @param array $settings
-	 * @return array
+	 * @return array Decrypted settings, with _decryption_failed = true if any secret could not be decrypted.
 	 */
-	private static function decrypt_settings($settings) {
+	public static function decrypt_settings($settings) {
 		if (!is_array($settings)) {
 			return array();
 		}
 
+		$has_failure = false;
 		foreach (self::$sensitive_keys as $key) {
-			if (!empty($settings[$key])) {
-				$settings[$key] = FileChi_Crypto::decrypt($settings[$key]);
+			if (isset($settings[$key]) && $settings[$key] !== '') {
+				$decrypted = FileChi_Crypto::decrypt($settings[$key]);
+				if ($decrypted === false) {
+					$has_failure = true;
+					$settings[$key . '_decryption_failed'] = true;
+				} else {
+					$settings[$key] = $decrypted;
+				}
 			}
+		}
+
+		if ($has_failure) {
+			$settings['_decryption_failed'] = true;
 		}
 
 		return $settings;
@@ -511,19 +556,32 @@ class FileChi_DB {
 
 	/**
 	 * Redacts sensitive fields for safe admin output (replaces with asterisks).
+	 * If decryption fails for any stored secret, marks _decryption_failed = true so the admin UI can warn the user.
 	 *
 	 * @param array $settings
 	 * @return array
 	 */
-	private static function redact_settings($settings) {
+	public static function redact_settings($settings) {
 		if (!is_array($settings)) {
 			return array();
 		}
 
+		$has_failure = false;
 		foreach (self::$sensitive_keys as $key) {
-			if (!empty($settings[$key])) {
-				$settings[$key] = '********';
+			if (isset($settings[$key]) && $settings[$key] !== '') {
+				$decrypted = FileChi_Crypto::decrypt($settings[$key]);
+				if ($decrypted === false) {
+					$has_failure = true;
+					$settings[$key . '_decryption_failed'] = true;
+					$settings[$key] = '';
+				} else {
+					$settings[$key] = '********';
+				}
 			}
+		}
+
+		if ($has_failure) {
+			$settings['_decryption_failed'] = true;
 		}
 
 		return $settings;

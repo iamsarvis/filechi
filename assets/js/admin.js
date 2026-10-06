@@ -398,7 +398,10 @@
 							(p.driver === 'sftp' || p.driver === 'ftps') && el('div', null,
 								el('strong', null, 'Host: '), `${p.settings.host || '—'}:${p.settings.port || (p.driver === 'sftp' ? 22 : 21)}`, el('br'),
 								el('strong', null, 'User: '), p.settings.username || '—'
-							)
+							),
+							p.settings && p.settings._decryption_failed ? el('div', {
+								style: { marginTop: 10, padding: '8px 10px', background: '#fcf0f2', borderLeft: '4px solid #d63638', color: '#b32d2e', fontSize: 12, fontWeight: 500, borderRadius: 2 }
+							}, "credentials can't be decrypted — re-enter them") : null
 						),
 						el('div', { className: 'filechi-provider-actions' },
 							!p.is_default && el(Button, {
@@ -677,6 +680,12 @@
 				style: { maxWidth: 640 },
 			},
 				el('div', { style: { padding: '10px 0' } },
+					editingProvider && editingProvider.settings && editingProvider.settings._decryption_failed && el(Notice, {
+						status: 'error',
+						isDismissible: false,
+						style: { marginBottom: 15 }
+					}, "credentials can't be decrypted — re-enter them"),
+
 					el(TextControl, {
 						label: 'Profile Name',
 						value: editingProvider.name,

@@ -165,6 +165,9 @@ class FileChi_REST extends WP_REST_Controller {
 		}
 
 		$id = FileChi_DB::insert_provider($params);
+		if (is_wp_error($id)) {
+			return $id;
+		}
 		if (!$id) {
 			return new WP_Error('db_error', __('Failed to create provider record.', 'filechi'), array('status' => 500));
 		}
@@ -183,6 +186,9 @@ class FileChi_REST extends WP_REST_Controller {
 		$params = $request->get_json_params();
 
 		$success = FileChi_DB::update_provider($id, $params);
+		if (is_wp_error($success)) {
+			return $success;
+		}
 		if (!$success) {
 			return new WP_Error('db_error', __('Failed to update provider record.', 'filechi'), array('status' => 500));
 		}
