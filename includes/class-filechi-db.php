@@ -268,15 +268,49 @@ class FileChi_DB {
 	}
 
 	/**
-	 * Deletes a provider profile.
+	 * Returns the count of attachments currently referencing a given provider ID.
 	 *
 	 * @param int $id Provider ID.
-	 * @return bool
+	 * @return int
+	 */
+	public static function get_provider_attachment_count($id) {
+		global $wpdb;
+		$id = absint($id);
+		return (int) $wpdb->get_var($wpdb->prepare(
+			"SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = '_filechi_provider_id' AND meta_value = %s",
+			(string) $id
+		));
+	}
+
+	/**
+	 * Deletes a provider profile if no media attachments reference it.
+	 *
+	 * @param int $id Provider ID.
+	 * @return bool|\WP_Error True on success, false or WP_Error on failure.
 	 */
 	public static function delete_provider($id) {
 		global $wpdb;
 		$table = self::get_providers_table();
 		$id    = absint($id);
+
+		// Safety Guard: Check if any attachments depend on this provider
+		$count = self::get_provider_attachment_count($id);
+		if ($count > 0) {
+			return new \WP_Error(
+				'provider_in_use',
+				sprintf(
+					/* translators: %d: number of attachments */
+					_n(
+						'Cannot delete provider: %d media attachment currently depends on this remote storage. Re-assign or migrate it before deleting.',
+						'Cannot delete provider: %d media attachments currently depend on this remote storage. Re-assign or migrate them before deleting.',
+						$count,
+						'filechi'
+					),
+					$count
+				),
+				array('status' => 409, 'count' => $count)
+			);
+		}
 
 		$was_default = (int) $wpdb->get_var($wpdb->prepare("SELECT is_default FROM {$table} WHERE id = %d", $id));
 

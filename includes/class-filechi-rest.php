@@ -203,10 +203,14 @@ class FileChi_REST extends WP_REST_Controller {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function delete_provider($request) {
-		$id      = absint($request->get_param('id'));
-		$success = FileChi_DB::delete_provider($id);
+		$id     = absint($request->get_param('id'));
+		$result = FileChi_DB::delete_provider($id);
 
-		if (!$success) {
+		if (is_wp_error($result)) {
+			return $result;
+		}
+
+		if (!$result) {
 			return new WP_Error('db_error', __('Failed to delete provider.', 'filechi'), array('status' => 500));
 		}
 

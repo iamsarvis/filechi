@@ -246,7 +246,9 @@
 				await loadProviders();
 				setGlobalNotice({ type: 'success', message: 'Connection profile deleted.' });
 			} catch (err) {
-				alert(err.message || 'Failed to delete provider.');
+				const errMsg = err.message || (err.data && err.data.message) || 'Failed to delete provider.';
+				setGlobalNotice({ type: 'error', message: errMsg });
+				alert(errMsg);
 			}
 		}
 
