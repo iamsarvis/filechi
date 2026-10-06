@@ -166,7 +166,19 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 
 			$this->ensure_dir($conn, $remote_dir);
 
-			return @ftp_put($conn, $full_remote_path, $local_file, FTP_BINARY);
+			$uploaded = @ftp_put($conn, $full_remote_path, $local_file, FTP_BINARY);
+			if (!$uploaded) {
+				return false;
+			}
+
+			// Verify upload cheaply by comparing remote file size
+			$remote_size = @ftp_size($conn, $full_remote_path);
+			$local_size  = filesize($local_file);
+			if ($remote_size !== -1 && $remote_size !== false && $remote_size !== $local_size) {
+				return false;
+			}
+
+			return true;
 		} catch (\Exception $e) {
 			return false;
 		}

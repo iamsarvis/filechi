@@ -137,7 +137,19 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 			}
 
 			// Stream upload from local file without exhausting PHP memory
-			return $sftp->put($full_remote_path, $local_file, SFTP::SOURCE_LOCAL_FILE);
+			$uploaded = $sftp->put($full_remote_path, $local_file, SFTP::SOURCE_LOCAL_FILE);
+			if (!$uploaded) {
+				return false;
+			}
+
+			// Verify upload cheaply by comparing remote file size
+			$remote_size = $sftp->filesize($full_remote_path);
+			$local_size  = filesize($local_file);
+			if ($remote_size !== false && $remote_size !== $local_size) {
+				return false;
+			}
+
+			return true;
 		} catch (\Exception $e) {
 			return false;
 		}

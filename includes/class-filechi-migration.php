@@ -123,73 +123,12 @@ class FileChi_Migration {
 			$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
 
 			if (empty($attached_file)) {
-				// Mark as failed if file meta is missing
 				FileChi_DB::log_transfer($attachment_id, $provider['id'], 'unknown', 0, 'failed', __('Missing _wp_attached_file meta.', 'filechi'));
 				continue;
 			}
 
-			$mime_type = get_post_mime_type($attachment_id);
-			$is_image  = (strpos($mime_type, 'image/') === 0);
-
-			$files_to_upload = array();
-			$dir_prefix      = dirname($attached_file);
-			$dir_prefix      = ($dir_prefix === '.' || $dir_prefix === '/') ? '' : $dir_prefix . '/';
-
-			$main_local = $basedir . '/' . $attached_file;
-			if (file_exists($main_local)) {
-				$files_to_upload[$attached_file] = $main_local;
-			}
-
-			if ($is_image) {
-				$metadata = wp_get_attachment_metadata($attachment_id);
-				if (!empty($metadata['original_image'])) {
-					$orig_rel   = $dir_prefix . $metadata['original_image'];
-					$orig_local = $basedir . '/' . $orig_rel;
-					if (file_exists($orig_local)) {
-						$files_to_upload[$orig_rel] = $orig_local;
-					}
-				}
-
-				if (!empty($metadata['sizes']) && is_array($metadata['sizes'])) {
-					foreach ($metadata['sizes'] as $size_data) {
-						if (!empty($size_data['file'])) {
-							$size_rel   = $dir_prefix . $size_data['file'];
-							$size_local = $basedir . '/' . $size_rel;
-							if (file_exists($size_local)) {
-								$files_to_upload[$size_rel] = $size_local;
-							}
-						}
-					}
-				}
-			}
-
-			if (empty($files_to_upload)) {
-				// Local files not found on disk
-				FileChi_DB::log_transfer($attachment_id, $provider['id'], $attached_file, 0, 'failed', __('Local file not found on disk.', 'filechi'));
-				continue;
-			}
-
-			$all_ok = true;
-
-			foreach ($files_to_upload as $rel_path => $abs_path) {
-				$filesize = filesize($abs_path);
-				$success  = $driver->upload($abs_path, $rel_path);
-
-				if ($success) {
-					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'transferred');
-					if (!$keep_local) {
-						@unlink($abs_path);
-					}
-				} else {
-					$all_ok = false;
-					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'failed', __('Background transfer failed.', 'filechi'));
-				}
-			}
-
-			if ($all_ok) {
-				update_post_meta($attachment_id, '_filechi_offloaded', 1);
-				update_post_meta($attachment_id, '_filechi_provider_id', $provider['id']);
-			}
+			// Unified offload routine handles all attachment types with two-phase offload and safety
+			FileChi_Media::offload_attachment($attachment_id, $provider);
 		}
 
 		// Schedule next batch immediately if still running

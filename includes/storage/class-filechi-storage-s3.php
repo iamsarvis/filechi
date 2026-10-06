@@ -266,7 +266,38 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 		}
 
 		$mime_type = wp_check_filetype($local_file)['type'] ?: 'application/octet-stream';
-		return $this->upload_content($body, $remote_path, $mime_type);
+		$headers   = array('Content-Type' => $mime_type);
+
+		if (!empty($this->settings['public_acl'])) {
+			$headers['x-amz-acl'] = 'public-read';
+		}
+
+		$response = $this->execute_request('PUT', $remote_path, $body, $headers);
+		if (is_wp_error($response)) {
+			return false;
+		}
+
+		$code = wp_remote_retrieve_response_code($response);
+		if ($code < 200 || $code >= 300) {
+			return false;
+		}
+
+		// Cheap upload verification: compare ETag with md5_file, or fallback to HEAD check
+		$etag = wp_remote_retrieve_header($response, 'etag');
+		if (!empty($etag)) {
+			$expected_md5 = md5_file($local_file);
+			$clean_etag   = trim($etag, '" \t\n\r\0\x0B');
+			// If not a multipart ETag (does not contain a hyphen), compare directly
+			if (strpos($clean_etag, '-') === false && strcasecmp($clean_etag, $expected_md5) !== 0) {
+				return false;
+			}
+		} else {
+			if (!$this->exists($remote_path)) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**

@@ -434,10 +434,15 @@
 				el('h3', { className: 'filechi-card-title' }, 'Media Library Offload Rules'),
 				el(ToggleControl, {
 					label: 'Keep local file copies on WordPress server after remote upload',
-					help: 'If enabled, files remain on local disk as well as remote storage. Default: disabled (saves web server disk space).',
+					help: 'If enabled, files remain on local disk as well as remote storage. Default: enabled (safe default).',
 					checked: !!settings.keep_local_files,
 					onChange: (val) => setSettings(Object.assign({}, settings, { keep_local_files: val ? 1 : 0 })),
 				}),
+				!settings.keep_local_files && el(Notice, {
+					status: 'warning',
+					isDismissible: false,
+					style: { margin: '10px 0 16px' }
+				}, "Local copies will be deleted after upload. Plugins that need the local file (image editing, thumbnail regeneration, backups) won't work until you restore files, and uninstalling FileChi will leave your media unreachable unless you restore them first."),
 				el(ToggleControl, {
 					label: 'Keep remote file copy when media is permanently deleted from WordPress',
 					help: 'If enabled, deleting an attachment in the Media Library will leave the remote storage file untouched.',

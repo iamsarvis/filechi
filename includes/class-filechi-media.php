@@ -18,15 +18,11 @@ class FileChi_Media {
 	public function __construct() {
 		$settings = get_option('filechi_settings', array());
 
-		// Hook attachment upload lifecycle
-		add_filter('wp_handle_upload', array($this, 'handle_upload'));
-		add_filter('wp_handle_sideload', array($this, 'handle_upload'));
+		// Offload all attachment types after metadata generation at late priority 999
+		add_filter('wp_generate_attachment_metadata', array($this, 'handle_attachment_metadata'), 999, 2);
 
-		// Offload images after all thumbnails and sub-sizes are generated
-		add_filter('wp_generate_attachment_metadata', array($this, 'handle_image_metadata'), 20, 2);
-
-		// Offload non-image attachments
-		add_action('add_attachment', array($this, 'handle_non_image_attachment'), 20);
+		// Action Scheduler retry hook for failed transfers
+		add_action('filechi_retry_attachment_offload', array($this, 'handle_retry_action'));
 
 		// URL rewriting filters
 		if (!empty($settings['url_replacement'] ?? 1)) {
@@ -58,49 +54,66 @@ class FileChi_Media {
 	}
 
 	/**
-	 * Intercepts upload errors or updates context during wp_handle_upload.
+	 * Offloads all attachment types upon metadata generation at late priority 999.
+	 * Handles $metadata being empty/false for non-images (PDF, videos, audio, etc.).
 	 *
-	 * @param array $file Array with 'file', 'url', 'type'.
-	 * @return array
+	 * @param array|false $metadata Attachment metadata array or false/empty.
+	 * @param int         $attachment_id Attachment post ID.
+	 * @return array|false Unmodified metadata.
 	 */
-	public function handle_upload($file) {
-		// Verify provider exists and is ready
-		$provider = FileChi_DB::get_default_provider();
-		if (!$provider) {
-			return $file;
-		}
-
-		return $file;
+	public function handle_attachment_metadata($metadata, $attachment_id) {
+		self::offload_attachment($attachment_id, null, is_array($metadata) ? $metadata : array());
+		return $metadata;
 	}
 
 	/**
-	 * Offloads image attachments along with all intermediate sub-sizes.
+	 * Two-phase offload routine for media attachments.
+	 * Used for both initial upload lifecycle and bulk migration.
 	 *
-	 * @param array $metadata Attachment metadata array.
-	 * @param int   $attachment_id Attachment post ID.
-	 * @return array
+	 * Phase 1: Upload and verify all files of the attachment.
+	 * Phase 2: If all succeed, set offloaded meta and delete local files (if keep_local_files is off).
+	 * On any failure: delete nothing locally, do not set offload flag, log error, and schedule one retry.
+	 *
+	 * @param int        $attachment_id Attachment post ID.
+	 * @param array|null $provider      Optional provider record. Defaults to active provider.
+	 * @param array|null $metadata      Optional metadata. Fetched if null.
+	 * @return bool True if successfully offloaded, false otherwise.
 	 */
-	public function handle_image_metadata($metadata, $attachment_id) {
-		$provider = FileChi_DB::get_default_provider();
+	public static function offload_attachment($attachment_id, $provider = null, $metadata = null) {
+		$attachment_id = absint($attachment_id);
+		if (!$attachment_id) {
+			return false;
+		}
+
+		if ($provider === null) {
+			$provider = FileChi_DB::get_default_provider();
+		}
 		if (!$provider) {
-			return $metadata;
+			return false;
 		}
 
 		$driver = FileChi_Storage_Factory::create($provider);
 		if (!$driver) {
-			return $metadata;
+			return false;
+		}
+
+		$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
+		if (empty($attached_file) && is_array($metadata) && !empty($metadata['file'])) {
+			$attached_file = $metadata['file'];
+		}
+
+		if (empty($attached_file)) {
+			return false;
 		}
 
 		$upload_dir = wp_upload_dir();
 		$basedir    = wp_normalize_path($upload_dir['basedir']);
 
-		$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
-		if (empty($attached_file) && !empty($metadata['file'])) {
-			$attached_file = $metadata['file'];
+		if ($metadata === null) {
+			$metadata = wp_get_attachment_metadata($attachment_id);
 		}
-
-		if (empty($attached_file)) {
-			return $metadata;
+		if (!is_array($metadata)) {
+			$metadata = array();
 		}
 
 		$settings   = get_option('filechi_settings', array());
@@ -109,13 +122,16 @@ class FileChi_Media {
 		$dir_prefix = dirname($attached_file);
 		$dir_prefix = ($dir_prefix === '.' || $dir_prefix === '/') ? '' : $dir_prefix . '/';
 
-		// Files to offload: relative_path => absolute_local_path
+		// Collect all files to offload: relative_path => absolute_local_path
 		$files_to_offload = array();
 
-		// 1. Main image file
+		// 1. Main file
 		$main_local = $basedir . '/' . $attached_file;
 		if (file_exists($main_local)) {
 			$files_to_offload[$attached_file] = $main_local;
+		} else {
+			FileChi_DB::log_transfer($attachment_id, $provider['id'], $attached_file, 0, 'failed', __('Main local file not found on disk.', 'filechi'));
+			return false;
 		}
 
 		// 2. Scaled original image (WP 5.3+)
@@ -129,7 +145,7 @@ class FileChi_Media {
 
 		// 3. Intermediate sub-sizes
 		if (!empty($metadata['sizes']) && is_array($metadata['sizes'])) {
-			foreach ($metadata['sizes'] as $size_name => $size_data) {
+			foreach ($metadata['sizes'] as $size_data) {
 				if (!empty($size_data['file'])) {
 					$size_rel   = $dir_prefix . $size_data['file'];
 					$size_local = $basedir . '/' . $size_rel;
@@ -140,84 +156,86 @@ class FileChi_Media {
 			}
 		}
 
-		$all_succeeded = true;
+		// 4. Edited-image backup sizes (_wp_attachment_backup_sizes)
+		$backup_sizes = get_post_meta($attachment_id, '_wp_attachment_backup_sizes', true);
+		if (is_array($backup_sizes)) {
+			foreach ($backup_sizes as $backup) {
+				if (!empty($backup['file'])) {
+					$bk_rel   = $dir_prefix . $backup['file'];
+					$bk_local = $basedir . '/' . $bk_rel;
+					if (file_exists($bk_local)) {
+						$files_to_offload[$bk_rel] = $bk_local;
+					}
+				}
+			}
+		}
+
+		// Phase 1: Upload and verify every file
+		$all_succeeded  = true;
+		$uploaded_files = array();
 
 		foreach ($files_to_offload as $rel_path => $abs_path) {
 			$filesize = filesize($abs_path);
 			$success  = $driver->upload($abs_path, $rel_path);
 
 			if ($success) {
+				$uploaded_files[$rel_path] = $abs_path;
 				FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'transferred');
-
-				if (!$keep_local) {
-					@unlink($abs_path);
-				}
 			} else {
 				$all_succeeded = false;
-				FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'failed', __('Upload to remote storage failed.', 'filechi'));
+				FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'failed', __('Upload or verification failed for remote storage.', 'filechi'));
+				break; // Stop immediately on any failure
 			}
 		}
 
+		// Phase 2: If all files succeeded, commit offload metadata and clean up local files (if enabled)
 		if ($all_succeeded) {
 			update_post_meta($attachment_id, '_filechi_offloaded', 1);
 			update_post_meta($attachment_id, '_filechi_provider_id', $provider['id']);
+			delete_post_meta($attachment_id, '_filechi_retry_scheduled');
+
+			if (!$keep_local) {
+				foreach ($files_to_offload as $abs_path) {
+					if (file_exists($abs_path)) {
+						@unlink($abs_path);
+					}
+				}
+			}
+
+			return true;
 		}
 
-		return $metadata;
+		// Failure phase: delete nothing locally, do not set flag, schedule one retry
+		self::schedule_retry($attachment_id);
+		return false;
 	}
 
 	/**
-	 * Offloads non-image attachments (PDF, videos, zip, documents).
+	 * Schedules a single retry action via Action Scheduler.
 	 *
-	 * @param int $attachment_id Attachment post ID.
+	 * @param int $attachment_id
 	 */
-	public function handle_non_image_attachment($attachment_id) {
-		$mime_type = get_post_mime_type($attachment_id);
-
-		// Images are handled via handle_image_metadata once sizes are generated
-		if (strpos($mime_type, 'image/') === 0) {
-			return;
+	public static function schedule_retry($attachment_id) {
+		if (get_post_meta($attachment_id, '_filechi_retry_scheduled', true)) {
+			return; // Only schedule one automatic retry
 		}
 
-		$provider = FileChi_DB::get_default_provider();
-		if (!$provider) {
-			return;
+		update_post_meta($attachment_id, '_filechi_retry_scheduled', 1);
+
+		if (function_exists('as_schedule_single_action')) {
+			as_schedule_single_action(time() + 60, 'filechi_retry_attachment_offload', array('attachment_id' => $attachment_id), 'filechi');
+		} elseif (function_exists('wp_schedule_single_event')) {
+			wp_schedule_single_event(time() + 60, 'filechi_retry_attachment_offload', array('attachment_id' => $attachment_id));
 		}
+	}
 
-		$driver = FileChi_Storage_Factory::create($provider);
-		if (!$driver) {
-			return;
-		}
-
-		$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
-		if (empty($attached_file)) {
-			return;
-		}
-
-		$upload_dir = wp_upload_dir();
-		$local_file = wp_normalize_path($upload_dir['basedir']) . '/' . $attached_file;
-
-		if (!file_exists($local_file)) {
-			return;
-		}
-
-		$settings   = get_option('filechi_settings', array());
-		$keep_local = !empty($settings['keep_local_files']);
-		$filesize   = filesize($local_file);
-
-		$success = $driver->upload($local_file, $attached_file);
-
-		if ($success) {
-			FileChi_DB::log_transfer($attachment_id, $provider['id'], $attached_file, $filesize, 'transferred');
-			update_post_meta($attachment_id, '_filechi_offloaded', 1);
-			update_post_meta($attachment_id, '_filechi_provider_id', $provider['id']);
-
-			if (!$keep_local) {
-				@unlink($local_file);
-			}
-		} else {
-			FileChi_DB::log_transfer($attachment_id, $provider['id'], $attached_file, $filesize, 'failed', __('Upload failed for non-image attachment.', 'filechi'));
-		}
+	/**
+	 * Handles Action Scheduler retry execution.
+	 *
+	 * @param int $attachment_id
+	 */
+	public function handle_retry_action($attachment_id) {
+		self::offload_attachment($attachment_id);
 	}
 
 	/**
@@ -367,9 +385,25 @@ class FileChi_Media {
 			}
 		}
 
+		// Include edited-image backup_sizes
+		$backup_sizes = get_post_meta($attachment_id, '_wp_attachment_backup_sizes', true);
+		if (is_array($backup_sizes)) {
+			foreach ($backup_sizes as $backup) {
+				if (!empty($backup['file'])) {
+					$files_to_delete[] = $dir_prefix . $backup['file'];
+				}
+			}
+		}
+
+		$files_to_delete = array_unique($files_to_delete);
+
 		foreach ($files_to_delete as $rel_path) {
-			$driver->delete($rel_path);
-			FileChi_DB::log_transfer($attachment_id, $provider_id, $rel_path, 0, 'deleted');
+			$deleted = $driver->delete($rel_path);
+			if ($deleted) {
+				FileChi_DB::log_transfer($attachment_id, $provider_id, $rel_path, 0, 'deleted');
+			} else {
+				FileChi_DB::log_transfer($attachment_id, $provider_id, $rel_path, 0, 'failed', __('Failed to delete remote file.', 'filechi'));
+			}
 		}
 	}
 }
