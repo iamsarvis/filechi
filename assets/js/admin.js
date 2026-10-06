@@ -759,7 +759,7 @@
 							label: 'SFTP Host / IP',
 							value: s.host || '',
 							onChange: (val) => updateSettingField('host', val),
-							placeholder: 'sftp.example.com',
+							placeholder: 'sftp.yourserver.com',
 						}),
 						el(TextControl, {
 							label: 'Port',
@@ -818,7 +818,7 @@
 							label: 'FTPS Host / IP',
 							value: s.host || '',
 							onChange: (val) => updateSettingField('host', val),
-							placeholder: 'ftp.example.com',
+							placeholder: 'ftp.yourserver.com',
 						}),
 						el(TextControl, {
 							label: 'Port',

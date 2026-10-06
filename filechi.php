@@ -1,19 +1,19 @@
 <?php
 /**
- * Plugin Name: FileChi
- * Plugin URI: https://github.com/iamsarvis/filechi
- * Description: Offload WordPress Media Library and WooCommerce attachments to secure remote storage (SFTP, FTPS, and S3-compatible: AWS S3, ArvanCloud, ParsPack).
- * Version: 1.0.0
- * Author: FileChi Team
- * Author URI: https://github.com/iamsarvis
- * Text Domain: filechi
- * Domain Path: /languages
+ * Plugin Name:       FileChi
+ * Plugin URI:        https://sobhanaskari.ir
+ * Description:       Offload WordPress Media Library and WooCommerce attachments to secure remote storage (SFTP, FTPS, and S3-compatible: AWS S3, ArvanCloud, ParsPack).
+ * Version:           1.0.0
+ * Author:            Sobhan Askari
+ * Author URI:        https://sobhanaskari.ir
+ * Text Domain:       filechi
+ * Domain Path:       /languages
  * Requires at least: 6.0
- * Requires PHP: 7.4
- * License: GPL-2.0-or-later
- * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Requires PHP:      7.4
+ * License:           GPL-2.0-or-later
+ * License URI:       https://www.gnu.org/licenses/gpl-2.0.htm
  *
- * @package FileChi
+ * @package           FileChi
  */
 
 defined('ABSPATH') || exit;

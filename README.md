@@ -2,7 +2,10 @@
 
 **FileChi** is a high-performance, commercial-grade WordPress plugin designed to seamlessly offload media library attachments and WooCommerce product files to remote storage services.
 
-Succeeding the legacy *Hacklog Remote Attachment* plugin, FileChi is a complete clean-room rewrite built from the ground up for modern WordPress (6.0+) and PHP (7.4–8.4), adhering to strict WordPress Coding Standards (WPCS) and enterprise security requirements.
+Author: **Sobhan Askari** — [https://sobhanaskari.ir](https://sobhanaskari.ir)  
+License: **GPL-2.0-or-later** — [https://www.gnu.org/licenses/gpl-2.0.htm](https://www.gnu.org/licenses/gpl-2.0.htm)
+
+Succeeding discontinued legacy remote attachment plugins, FileChi is a complete clean-room rewrite built from the ground up for modern WordPress (6.0+) and PHP (7.4–8.4), adhering to strict WordPress Coding Standards (WPCS) and enterprise security requirements.
 
 ---
 
@@ -65,6 +68,21 @@ Succeeding the legacy *Hacklog Remote Attachment* plugin, FileChi is a complete 
 
 ---
 
+## 📦 Third-party libraries
+
+The following third-party libraries are bundled with FileChi under their respective licenses:
+
+| Library | Version | License | License File Location |
+|---|---|---|---|
+| **phpseclib/phpseclib** | 3.0.57 | MIT | `includes/vendor/phpseclib/LICENSE` |
+| **paragonie/constant_time_encoding** | v3.1.3 | MIT | `includes/vendor/paragonie/constant_time_encoding/LICENSE.txt` |
+| **paragonie/random_compat** | v9.99.100 | MIT | Bundled with constant_time_encoding |
+
+*Note: Action Scheduler will be listed here upon bundling per Item G.*
+
+---
+
 ## 📄 License
 
-FileChi is open-source software licensed under the [GNU General Public License v2.0 or later](https://www.gnu.org/licenses/gpl-2.0.html).
+FileChi is software created by **Sobhan Askari** and licensed under the [GNU General Public License v2.0 or later](https://www.gnu.org/licenses/gpl-2.0.htm).
+
