@@ -86,6 +86,7 @@ class FileChi_Activator {
 				'wc_signed_downloads'       => 1, // Generate signed time-limited URLs for WC downloads
 				'wc_download_expiry'        => 900, // 15 minutes (in seconds)
 				'migration_batch_size'      => 10,
+				'delete_data_on_uninstall'  => 0, // Default: keep all plugin data on uninstall
 			);
 			add_option('filechi_settings', $defaults, '', 'no'); // do not autoload large blobs
 		}
@@ -95,9 +96,14 @@ class FileChi_Activator {
 	 * Deactivation hook.
 	 */
 	public static function deactivate() {
-		// Stop any pending Action Scheduler background migration jobs if needed
+		// Stop any pending Action Scheduler background jobs
 		if (function_exists('as_unschedule_all_actions')) {
-			as_unschedule_all_actions('filechi_process_migration_batch');
+			as_unschedule_all_actions('filechi_process_migration_batch', array(), 'filechi');
+			as_unschedule_all_actions('filechi_retry_attachment_offload', array(), 'filechi');
 		}
+
+		// Clear any scheduled WP-Cron events
+		wp_clear_scheduled_hook('filechi_process_migration_batch');
+		wp_clear_scheduled_hook('filechi_retry_attachment_offload');
 	}
 }

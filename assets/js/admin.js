@@ -466,6 +466,19 @@
 					onChange: (val) => setSettings(Object.assign({}, settings, { migration_batch_size: parseInt(val, 10) || 10 })),
 					style: { maxWidth: 160 },
 				}),
+				el('div', { style: { borderTop: '1px solid #e0e0e0', paddingTop: 16, marginTop: 16 } },
+					el(ToggleControl, {
+						label: 'Delete all plugin data on uninstall',
+						help: 'If enabled, uninstalling FileChi will permanently drop custom database tables, settings, logs, and attachment offload metadata. Remote storage files will NOT be deleted.',
+						checked: !!settings.delete_data_on_uninstall,
+						onChange: (val) => setSettings(Object.assign({}, settings, { delete_data_on_uninstall: val ? 1 : 0 })),
+					}),
+					settings.delete_data_on_uninstall && el(Notice, {
+						status: 'warning',
+						isDismissible: false,
+						style: { margin: '10px 0 16px' }
+					}, "Warning: If this option is enabled when you delete the plugin, your connection profiles, logs, and attachment tracking metadata will be permanently dropped. Remote storage files will remain untouched on your remote provider.")
+				),
 				el('div', { style: { marginTop: 24 } },
 					el(Button, {
 						variant: 'primary',
