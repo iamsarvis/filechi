@@ -67,6 +67,13 @@ if (!filechi_check_requirements()) {
 	return;
 }
 
+// Load Action Scheduler version-safe loader before plugins_loaded
+if (file_exists(FILECHI_DIR . 'includes/vendor/woocommerce/action-scheduler/action-scheduler.php')) {
+	require_once FILECHI_DIR . 'includes/vendor/woocommerce/action-scheduler/action-scheduler.php';
+} elseif (file_exists(FILECHI_DIR . 'vendor/woocommerce/action-scheduler/action-scheduler.php')) {
+	require_once FILECHI_DIR . 'vendor/woocommerce/action-scheduler/action-scheduler.php';
+}
+
 // Register activation and deactivation hooks
 require_once FILECHI_DIR . 'includes/class-filechi-activator.php';
 register_activation_hook(FILECHI_FILE, array('FileChi_Activator', 'activate'));

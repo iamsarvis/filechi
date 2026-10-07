@@ -31,15 +31,6 @@ class FileChi_Migration {
 	}
 
 	/**
-	 * Checks if Action Scheduler is available.
-	 *
-	 * @return bool
-	 */
-	public static function is_action_scheduler_active() {
-		return function_exists('as_schedule_single_action') && function_exists('as_has_scheduled_action');
-	}
-
-	/**
 	 * Starts or resumes the background migration.
 	 *
 	 * @return bool True if queued, false otherwise.
@@ -47,18 +38,10 @@ class FileChi_Migration {
 	public static function start_migration() {
 		update_option('filechi_migration_status', 'running');
 
-		if (self::is_action_scheduler_active()) {
-			if (!as_has_scheduled_action(self::ACTION_HOOK)) {
-				as_schedule_single_action(time() + 1, self::ACTION_HOOK);
-			}
-			return true;
-		} else {
-			// Fallback to standard WP-Cron if Action Scheduler is not present
-			if (!wp_next_scheduled(self::ACTION_HOOK)) {
-				wp_schedule_single_event(time() + 1, self::ACTION_HOOK);
-			}
-			return true;
+		if (!as_has_scheduled_action(self::ACTION_HOOK)) {
+			as_schedule_single_action(time() + 1, self::ACTION_HOOK);
 		}
+		return true;
 	}
 
 	/**
@@ -66,12 +49,7 @@ class FileChi_Migration {
 	 */
 	public static function pause_migration() {
 		update_option('filechi_migration_status', 'paused');
-
-		if (self::is_action_scheduler_active()) {
-			as_unschedule_all_actions(self::ACTION_HOOK);
-		} else {
-			wp_clear_scheduled_hook(self::ACTION_HOOK);
-		}
+		as_unschedule_all_actions(self::ACTION_HOOK);
 	}
 
 	/**
@@ -131,14 +109,10 @@ class FileChi_Migration {
 			FileChi_Media::offload_attachment($attachment_id, $provider);
 		}
 
-		// Schedule next batch immediately if still running
+		// Schedule next batch immediately via Action Scheduler if still running
 		$remaining = FileChi_DB::get_unmigrated_attachment_ids(1);
 		if (!empty($remaining)) {
-			if (self::is_action_scheduler_active()) {
-				as_schedule_single_action(time() + 1, self::ACTION_HOOK);
-			} else {
-				wp_schedule_single_event(time() + 2, self::ACTION_HOOK);
-			}
+			as_schedule_single_action(time() + 1, self::ACTION_HOOK);
 		} else {
 			update_option('filechi_migration_status', 'completed');
 		}

@@ -251,11 +251,7 @@ class FileChi_Media {
 
 		update_post_meta($attachment_id, '_filechi_retry_scheduled', 1);
 
-		if (function_exists('as_schedule_single_action')) {
-			as_schedule_single_action(time() + 60, 'filechi_retry_attachment_offload', array('attachment_id' => $attachment_id), 'filechi');
-		} elseif (function_exists('wp_schedule_single_event')) {
-			wp_schedule_single_event(time() + 60, 'filechi_retry_attachment_offload', array('attachment_id' => $attachment_id));
-		}
+		as_schedule_single_action(time() + 60, 'filechi_retry_attachment_offload', array('attachment_id' => $attachment_id), 'filechi');
 	}
 
 	/**

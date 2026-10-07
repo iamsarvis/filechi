@@ -77,8 +77,7 @@ The following third-party libraries are bundled with FileChi under their respect
 | **phpseclib/phpseclib** | 3.0.57 | MIT | `includes/vendor/phpseclib/LICENSE` |
 | **paragonie/constant_time_encoding** | v3.1.3 | MIT | `includes/vendor/paragonie/constant_time_encoding/LICENSE.txt` |
 | **paragonie/random_compat** | v9.99.100 | MIT | Bundled with constant_time_encoding |
-
-*Note: Action Scheduler will be listed here upon bundling per Item G.*
+| **woocommerce/action-scheduler** | 4.2.0 | GPL-3.0 | `includes/vendor/woocommerce/action-scheduler/license.txt` |
 
 ---
 
