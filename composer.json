@@ -24,8 +24,14 @@
     "strauss": {
       "target_directory": "includes/vendor",
       "namespace_prefix": "FileChi\\Vendor\\",
-      "classmap_prefix": "FileChi_Vendor_"
+      "classmap_prefix": "FileChi_Vendor_",
+      "exclude_packages": [
+        "woocommerce/action-scheduler"
+      ]
     }
+  },
+  "scripts": {
+    "scope-vendor": "php tools/scope-vendor.php"
   },
   "config": {
     "allow-plugins": {

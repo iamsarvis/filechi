@@ -2,6 +2,8 @@
 declare(strict_types=1);
 namespace FileChi\Vendor\ParagonIE\ConstantTime;
 
+use Override;
+
 /**
  *  Copyright (c) 2016 - 2022 Paragon Initiative Enterprises.
  *  Copyright (c) 2014 Steve "Sc00bz" Thomas (steve at tobtu dot com)
@@ -29,7 +31,7 @@ namespace FileChi\Vendor\ParagonIE\ConstantTime;
  * Class Base64DotSlash
  * ./[A-Z][a-z][0-9]
  *
- * @package FileChi\Vendor\ParagonIE\ConstantTime
+ * @package ParagonIE\ConstantTime
  */
 abstract class Base64DotSlash extends Base64
 {
@@ -44,6 +46,7 @@ abstract class Base64DotSlash extends Base64
      * @param int $src
      * @return int
      */
+    #[Override]
     protected static function decode6Bits(int $src): int
     {
         $ret = -1;
@@ -70,6 +73,7 @@ abstract class Base64DotSlash extends Base64
      * @param int $src
      * @return string
      */
+    #[Override]
     protected static function encode6Bits(int $src): string
     {
         $src += 0x2e;
