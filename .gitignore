@@ -1,3 +1,5 @@
 # Agent-only files — never commit or push
 AGENTS.md
 phase-0-prompt.md
+
+/vendor/
