@@ -179,12 +179,13 @@ class FileChi_Media {
 			}
 		}
 
-		if ($has_protected && ($provider['type'] === 'sftp' || $provider['type'] === 'ftps')) {
+		$provider_driver = $provider['driver'] ?? $provider['type'] ?? '';
+		if ($has_protected && ($provider_driver === 'sftp' || $provider_driver === 'ftps')) {
 			$protected_path = trim($provider['settings']['protected_path'] ?? '');
 			if (empty($protected_path)) {
 				update_option('filechi_protected_path_missing_notice', array(
 					'attachment_id' => $attachment_id,
-					'provider_name' => $provider['name'] ?? $provider['type'],
+					'provider_name' => $provider['name'] ?? $provider_driver,
 					'time'          => time(),
 				));
 				FileChi_DB::log_transfer(
@@ -271,32 +272,10 @@ class FileChi_Media {
 	 * @return bool
 	 */
 	public static function is_protected_file($path, $attachment_id = 0) {
-		$clean_path = str_replace('\\', '/', $path);
+		$clean_path = str_replace('\\', '/', (string) $path);
 
-		// WooCommerce protected uploads directory
-		if (strpos($clean_path, 'woocommerce_uploads') !== false) {
-			return true;
-		}
-
-		if ($attachment_id > 0) {
-			if (get_post_meta($attachment_id, '_filechi_is_protected', true)) {
-				return true;
-			}
-
-			global $wpdb;
-			if (!empty($wpdb)) {
-				$filename = basename($clean_path);
-				$found    = $wpdb->get_var($wpdb->prepare(
-					"SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key = '_downloadable_files' AND meta_value LIKE %s LIMIT 1",
-					'%' . $wpdb->esc_like($filename) . '%'
-				));
-				if (!empty($found)) {
-					return true;
-				}
-			}
-		}
-
-		return false;
+		// Per AGENTS.md §7: a file is protected if and only if its relative path is under woocommerce_uploads/
+		return strpos($clean_path, 'woocommerce_uploads/') !== false || strpos($clean_path, 'woocommerce_uploads') === 0;
 	}
 
 	/**
