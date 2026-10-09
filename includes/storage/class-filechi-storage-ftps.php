@@ -76,7 +76,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 		}
 
 		if (!function_exists('ftp_ssl_connect')) {
-			throw new \Exception(__('The PHP ftp_ssl_connect() function is not available. Please ensure the PHP OpenSSL and FTP extensions are enabled.', 'filechi'));
+			throw new \Exception(esc_html__('The PHP ftp_ssl_connect() function is not available. Please ensure the PHP OpenSSL and FTP extensions are enabled.', 'filechi'));
 		}
 
 		$host    = trim($this->settings['host']);
@@ -84,20 +84,20 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 		$timeout = absint($this->settings['timeout']) ?: 30;
 
 		if (empty($host)) {
-			throw new \Exception(__('FTPS host cannot be empty.', 'filechi'));
+			throw new \Exception(esc_html__('FTPS host cannot be empty.', 'filechi'));
 		}
 
 		// Connect strictly via explicit TLS
 		$conn = @ftp_ssl_connect($host, $port, $timeout);
 		if (!$conn) {
-			throw new \Exception(sprintf(__('Failed to establish secure FTPS connection to %1$s:%2$d (Timeout: %3$ds).', 'filechi'), $host, $port, $timeout));
+			throw new \Exception(esc_html(sprintf(__('Failed to establish secure FTPS connection to %1$s:%2$d (Timeout: %3$ds).', 'filechi'), $host, $port, $timeout)));
 		}
 
 		// Login
 		$login = @ftp_login($conn, $this->settings['username'], $this->settings['password']);
 		if (!$login) {
 			@ftp_close($conn);
-			throw new \Exception(__('FTPS authentication failed. Please check your username and password.', 'filechi'));
+			throw new \Exception(esc_html__('FTPS authentication failed. Please check your username and password.', 'filechi'));
 		}
 
 		// Set passive mode (recommended for modern firewalls & NATs)

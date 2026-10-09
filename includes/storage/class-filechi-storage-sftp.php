@@ -73,7 +73,7 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 		$timeout = absint($this->settings['timeout']) ?: 30;
 
 		if (empty($host)) {
-			throw new \Exception(__('SFTP host cannot be empty.', 'filechi'));
+			throw new \Exception(esc_html__('SFTP host cannot be empty.', 'filechi'));
 		}
 
 		$sftp = new SFTP($host, $port, $timeout);
@@ -90,8 +90,8 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 
 		if (!$login_ok) {
 			$errors = $sftp->getErrors();
-			$err_msg = !empty($errors) ? implode('; ', (array) $errors) : __('SFTP login failed. Please check your credentials.', 'filechi');
-			throw new \Exception($err_msg);
+			$err_msg = !empty($errors) ? implode('; ', (array) $errors) : esc_html__('SFTP login failed. Please check your credentials.', 'filechi');
+			throw new \Exception(esc_html($err_msg));
 		}
 
 		$this->client = $sftp;
@@ -318,6 +318,7 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 
 			// Stream directly to output without loading file into PHP memory
 			$result = $sftp->get($full_remote_path, function ($chunk) {
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Binary stream output for file download.
 				echo $chunk;
 				if (ob_get_level() > 0) {
 					ob_flush();

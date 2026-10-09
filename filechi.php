@@ -32,15 +32,12 @@ define('FILECHI_MIN_WP', '6.0');
 function filechi_check_requirements() {
 	if (version_compare(PHP_VERSION, FILECHI_MIN_PHP, '<')) {
 		add_action('admin_notices', function () {
-			printf(
-				'<div class="error"><p>%s</p></div>',
-				sprintf(
-					/* translators: 1: Required PHP version, 2: Current PHP version */
-					esc_html__('FileChi requires PHP %1$s or higher. Your server is running PHP %2$s. Please upgrade your PHP version.', 'filechi'),
-					FILECHI_MIN_PHP,
-					PHP_VERSION
-				)
-			);
+			echo '<div class="error"><p>' . esc_html(sprintf(
+				/* translators: 1: Required PHP version, 2: Current PHP version */
+				__('FileChi requires PHP %1$s or higher. Your server is running PHP %2$s. Please upgrade your PHP version.', 'filechi'),
+				FILECHI_MIN_PHP,
+				PHP_VERSION
+			)) . '</p></div>';
 		});
 		return false;
 	}
@@ -48,14 +45,11 @@ function filechi_check_requirements() {
 	global $wp_version;
 	if (version_compare($wp_version, FILECHI_MIN_WP, '<')) {
 		add_action('admin_notices', function () {
-			printf(
-				'<div class="error"><p>%s</p></div>',
-				sprintf(
-					/* translators: 1: Required WP version */
-					esc_html__('FileChi requires WordPress %s or higher. Please update your WordPress installation.', 'filechi'),
-					FILECHI_MIN_WP
-				)
-			);
+			echo '<div class="error"><p>' . esc_html(sprintf(
+				/* translators: 1: Required WP version */
+				__('FileChi requires WordPress %s or higher. Please update your WordPress installation.', 'filechi'),
+				FILECHI_MIN_WP
+			)) . '</p></div>';
 		});
 		return false;
 	}
@@ -128,6 +122,7 @@ add_action('plugins_loaded', 'filechi_init');
  * Handles signed, time-limited download requests for transports without native pre-signed URLs.
  */
 function filechi_handle_signed_download() {
+	// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Public download link authenticated via HMAC token and expiration timestamp.
 	if (!isset($_GET['filechi_action']) || $_GET['filechi_action'] !== 'download') {
 		return;
 	}
@@ -135,6 +130,7 @@ function filechi_handle_signed_download() {
 	$file    = isset($_GET['filechi_file']) ? sanitize_text_field(wp_unslash($_GET['filechi_file'])) : '';
 	$expires = isset($_GET['filechi_expires']) ? absint($_GET['filechi_expires']) : 0;
 	$token   = isset($_GET['filechi_token']) ? sanitize_text_field(wp_unslash($_GET['filechi_token'])) : '';
+	// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
 	// Clean path and prevent directory traversal
 	$file = str_replace(array('../', '..\\', '\\'), array('', '', '/'), rawurldecode($file));

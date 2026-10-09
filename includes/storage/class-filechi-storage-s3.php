@@ -544,6 +544,7 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 					if ($chunk === false) {
 						break;
 					}
+					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Binary stream output for file download.
 					echo $chunk;
 					if (ob_get_level() > 0) {
 						ob_flush();
@@ -561,6 +562,7 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 			curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
 			curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
 			curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $chunk) {
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Binary stream output for file download.
 				echo $chunk;
 				if (ob_get_level() > 0) {
 					ob_flush();
