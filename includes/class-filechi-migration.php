@@ -81,7 +81,7 @@ class FileChi_Migration {
 			return;
 		}
 
-		$settings   = get_option('filechi_settings', array());
+		$settings   = wp_parse_args(get_option('filechi_settings', array()), FileChi_Activator::default_settings());
 		$batch_size = !empty($settings['migration_batch_size']) ? absint($settings['migration_batch_size']) : 10;
 		$keep_local = !empty($settings['keep_local_files']);
 

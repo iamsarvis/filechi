@@ -335,9 +335,19 @@ if (!class_exists('Mock_WPDB')) {
 			return 1;
 		}
 
+		public function get_charset_collate() {
+			return 'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
+		}
+
 		public function update($table, $data, $where, $data_format, $where_format) {
 			return 1;
 		}
+	}
+}
+
+if (!function_exists('dbDelta')) {
+	function dbDelta($queries = '') {
+		return array();
 	}
 }
 
@@ -369,3 +379,49 @@ function filechi_create_test_provider($id = 1, $driver = 'sftp', $settings = arr
 		'is_default' => (int) $is_default,
 	);
 }
+
+if (!class_exists('WP_REST_Controller')) {
+	class WP_REST_Controller {
+		protected $namespace = '';
+		protected $rest_base = '';
+	}
+}
+
+if (!class_exists('WP_REST_Response')) {
+	class WP_REST_Response {
+		public $data;
+		public $status;
+		public function __construct($data = null, $status = 200) {
+			$this->data   = $data;
+			$this->status = $status;
+		}
+		public function get_data() {
+			return $this->data;
+		}
+		public function get_status() {
+			return $this->status;
+		}
+	}
+}
+
+if (!function_exists('rest_ensure_response')) {
+	function rest_ensure_response($response) {
+		if ($response instanceof WP_REST_Response) {
+			return $response;
+		}
+		return new WP_REST_Response($response);
+	}
+}
+
+if (!class_exists('WP_REST_Request')) {
+	class WP_REST_Request {
+		protected $params = array();
+		public function __construct($method = 'GET', $route = '') {}
+		public function set_param($key, $value) { $this->params[$key] = $value; }
+		public function get_params() { return $this->params; }
+		public function get_param($key) { return $this->params[$key] ?? null; }
+		public function get_json_params() { return $this->params; }
+	}
+}
+
+require_once FILECHI_DIR . 'includes/class-filechi-activator.php';

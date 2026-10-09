@@ -16,7 +16,7 @@ class FileChi_Media {
 	 * Constructor.
 	 */
 	public function __construct() {
-		$settings = get_option('filechi_settings', array());
+		$settings = wp_parse_args(get_option('filechi_settings', array()), FileChi_Activator::default_settings());
 
 		// Offload all attachment types after metadata generation at late priority 999
 		add_filter('wp_generate_attachment_metadata', array($this, 'handle_attachment_metadata'), 999, 2);
@@ -116,7 +116,7 @@ class FileChi_Media {
 			$metadata = array();
 		}
 
-		$settings   = get_option('filechi_settings', array());
+		$settings   = wp_parse_args(get_option('filechi_settings', array()), FileChi_Activator::default_settings());
 		$keep_local = !empty($settings['keep_local_files']);
 
 		$dir_prefix = dirname($attached_file);
@@ -390,7 +390,7 @@ class FileChi_Media {
 	 * @param int $attachment_id Attachment ID being deleted.
 	 */
 	public function handle_delete_attachment($attachment_id) {
-		$settings = get_option('filechi_settings', array());
+		$settings = wp_parse_args(get_option('filechi_settings', array()), FileChi_Activator::default_settings());
 		if (!empty($settings['keep_remote_on_delete'])) {
 			return; // User configured to preserve remote copies
 		}

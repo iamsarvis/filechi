@@ -68,9 +68,29 @@ class FileChi_Activator {
   KEY status (status)
 ) {$charset_collate};";
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		if (file_exists(ABSPATH . 'wp-admin/includes/upgrade.php')) {
+			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		}
 		dbDelta($sql_providers);
 		dbDelta($sql_logs);
+	}
+
+	/**
+	 * Returns the single source of truth for plugin default settings.
+	 *
+	 * @return array
+	 */
+	public static function default_settings() {
+		return array(
+			'keep_local_files'         => 1, // Default: keep local file copies (safe default)
+			'keep_remote_on_delete'    => 0, // Default: delete remote copy when attachment is deleted
+			'remote_path_format'       => 'basedir', // 'basedir' (standard wp-content/uploads layout)
+			'url_replacement'          => 1, // Filter attachment URLs to remote
+			'wc_signed_downloads'      => 1, // Generate signed time-limited URLs for WC downloads
+			'wc_download_expiry'       => 900, // 15 minutes (in seconds)
+			'migration_batch_size'     => 10,
+			'delete_data_on_uninstall' => 0, // Default: keep all plugin data on uninstall
+		);
 	}
 
 	/**
@@ -78,16 +98,7 @@ class FileChi_Activator {
 	 */
 	private static function set_default_options() {
 		if (get_option('filechi_settings') === false) {
-			$defaults = array(
-				'keep_local_files'          => 1, // Default: keep local file copies (safe default)
-				'keep_remote_on_delete'     => 0, // Default: delete remote copy when attachment is deleted
-				'remote_path_format'        => 'basedir', // 'basedir' (standard wp-content/uploads layout)
-				'url_replacement'           => 1, // Filter attachment URLs to remote
-				'wc_signed_downloads'       => 1, // Generate signed time-limited URLs for WC downloads
-				'wc_download_expiry'        => 900, // 15 minutes (in seconds)
-				'migration_batch_size'      => 10,
-				'delete_data_on_uninstall'  => 0, // Default: keep all plugin data on uninstall
-			);
+			$defaults = self::default_settings();
 			add_option('filechi_settings', $defaults, '', false); // do not autoload large blobs
 		}
 	}

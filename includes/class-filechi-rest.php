@@ -290,37 +290,66 @@ class FileChi_REST extends WP_REST_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function get_settings() {
-		$defaults = array(
-			'keep_local_files'      => 0,
-			'keep_remote_on_delete' => 0,
-			'url_replacement'       => 1,
-			'wc_signed_downloads'   => 1,
-			'wc_download_expiry'    => 900,
-			'migration_batch_size'  => 10,
-		);
+		$defaults = FileChi_Activator::default_settings();
 		$settings = wp_parse_args(get_option('filechi_settings', array()), $defaults);
 		return rest_ensure_response($settings);
 	}
 
 	/**
 	 * Saves settings.
+	 * Validates known keys and merges them over stored options.
 	 *
-	 * @param WP_REST_Request $request
+	 * @param WP_REST_Request|array $request
 	 * @return WP_REST_Response
 	 */
 	public function save_settings($request) {
-		$params   = $request->get_json_params();
-		$settings = array(
-			'keep_local_files'      => !empty($params['keep_local_files']) ? 1 : 0,
-			'keep_remote_on_delete' => !empty($params['keep_remote_on_delete']) ? 1 : 0,
-			'url_replacement'       => !empty($params['url_replacement']) ? 1 : 0,
-			'wc_signed_downloads'   => !empty($params['wc_signed_downloads']) ? 1 : 0,
-			'wc_download_expiry'    => absint($params['wc_download_expiry'] ?? 900) ?: 900,
-			'migration_batch_size'  => min(50, max(1, absint($params['migration_batch_size'] ?? 10))),
-		);
+		$stored = get_option('filechi_settings', array());
+		if (!is_array($stored)) {
+			$stored = array();
+		}
 
-		update_option('filechi_settings', $settings);
-		return rest_ensure_response($settings);
+		if (is_array($request)) {
+			$params = $request;
+		} else {
+			$params = $request->get_json_params();
+			if (empty($params)) {
+				$params = $request->get_params();
+			}
+		}
+
+		$updates = array();
+		if (array_key_exists('keep_local_files', $params)) {
+			$updates['keep_local_files'] = !empty($params['keep_local_files']) ? 1 : 0;
+		}
+		if (array_key_exists('keep_remote_on_delete', $params)) {
+			$updates['keep_remote_on_delete'] = !empty($params['keep_remote_on_delete']) ? 1 : 0;
+		}
+		if (array_key_exists('remote_path_format', $params)) {
+			$updates['remote_path_format'] = sanitize_text_field((string) $params['remote_path_format']);
+		}
+		if (array_key_exists('url_replacement', $params)) {
+			$updates['url_replacement'] = !empty($params['url_replacement']) ? 1 : 0;
+		}
+		if (array_key_exists('wc_signed_downloads', $params)) {
+			$updates['wc_signed_downloads'] = !empty($params['wc_signed_downloads']) ? 1 : 0;
+		}
+		if (array_key_exists('wc_download_expiry', $params)) {
+			$val = absint($params['wc_download_expiry']);
+			$updates['wc_download_expiry'] = min(86400, max(60, $val));
+		}
+		if (array_key_exists('migration_batch_size', $params)) {
+			$val = absint($params['migration_batch_size']);
+			$updates['migration_batch_size'] = min(50, max(1, $val));
+		}
+		if (array_key_exists('delete_data_on_uninstall', $params)) {
+			$updates['delete_data_on_uninstall'] = !empty($params['delete_data_on_uninstall']) ? 1 : 0;
+		}
+
+		$merged = array_merge($stored, $updates);
+		update_option('filechi_settings', $merged);
+
+		$defaults = FileChi_Activator::default_settings();
+		return rest_ensure_response(wp_parse_args($merged, $defaults));
 	}
 
 	/**
