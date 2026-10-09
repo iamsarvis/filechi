@@ -50,20 +50,20 @@ Analyzes `filechi.php`, `uninstall.php`, and `includes/` (excluding third-party 
 
 ---
 
-### 2.3 PHPCS Security Sniffs
+### 2.3 PHPCS Security & Database Sniffs
 
-Scans codebase against WordPress Coding Standards security sniffs (`WordPress.Security.EscapeOutput`, `WordPress.Security.NonceVerification`, `WordPress.Security.ValidatedSanitizedInput`).
+Scans codebase against the five critical security and database sniffs (`WordPress.Security.EscapeOutput`, `WordPress.Security.NonceVerification`, `WordPress.Security.ValidatedSanitizedInput`, `WordPress.DB.PreparedSQL`, `WordPress.DB.DirectDatabaseQuery`) configured centrally in `phpcs.xml`.
 
 - **PowerShell:**
   ```powershell
-  .\vendor\bin\phpcs -s --standard=WordPress --sniffs=WordPress.Security.EscapeOutput,WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput --ignore=includes/vendor filechi.php uninstall.php includes/
+  .\vendor\bin\phpcs
   ```
 - **CMD:**
   ```cmd
-  vendor\bin\phpcs.bat -s --standard=WordPress --sniffs=WordPress.Security.EscapeOutput,WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput --ignore=includes/vendor filechi.php uninstall.php includes\
+  vendor\bin\phpcs.bat
   ```
 
-*Expected result:* `0 errors, 0 warnings`.
+*Expected result:* `0 errors, 0 warnings` (15/15 files clean).
 
 ---
 
