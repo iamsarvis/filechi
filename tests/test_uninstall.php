@@ -43,7 +43,7 @@ assert(count($deleted_postmeta) === 0);
 
 // Check: transients deleted and scheduled actions cleared
 $transient_queries = array_filter($wpdb->queries, function($q) {
-	return stripos($q, '_transient_filechi_') !== false;
+	return stripos($q, '_transient_filechi_') !== false || stripos(stripslashes($q), '_transient_filechi_') !== false;
 });
 echo 'Transients cleaned up: ' . (count($transient_queries) > 0 ? 'PASS' : 'FAIL') . "\n";
 assert(count($transient_queries) > 0);
