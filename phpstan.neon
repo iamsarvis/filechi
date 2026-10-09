@@ -1,0 +1,26 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: 5
+    paths:
+        - filechi.php
+        - uninstall.php
+        - includes/
+    excludePaths:
+        analyse:
+            - includes/vendor/*
+    bootstrapFiles:
+        - tests/phpstan-bootstrap.php
+    scanFiles:
+        - includes/vendor/woocommerce/action-scheduler/functions.php
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+    ignoreErrors:
+        # Dual PHP 7.4 - 8.4 compatibility: ftp_ssl_connect returns resource on PHP 7.4 and FTP\Connection on PHP 8.1+
+        -
+            message: '#Property FileChi_Storage_FTPS::\$connection \(FTP\\Connection\|resource\|null\) is never assigned resource#'
+            path: includes/storage/class-filechi-storage-ftps.php
+        # Runtime guard for PHP < 7.4: condition evaluates as false on modern CLI runtime during static analysis
+        -
+            message: '#If condition is always false\.#'
+            path: filechi.php

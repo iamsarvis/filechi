@@ -84,7 +84,6 @@ class FileChi_Admin {
 			array(
 				'restUrl'                 => esc_url_raw(rest_url('filechi/v1')),
 				'nonce'                   => wp_create_nonce('wp_rest'),
-				'isActionSchedulerActive' => FileChi_Migration::is_action_scheduler_active(),
 				'pluginUrl'               => FILECHI_URL,
 				'strings'                 => array(
 					'connections'        => __('Connections', 'filechi'),

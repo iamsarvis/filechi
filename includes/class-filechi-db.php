@@ -138,7 +138,7 @@ class FileChi_DB {
 	 * Inserts a new provider profile.
 	 *
 	 * @param array $data Provider details (name, driver, is_default, settings).
-	 * @return int|false Inserted ID or false on failure.
+	 * @return int|false|WP_Error Inserted ID, false on failure, or WP_Error on encryption error.
 	 */
 	public static function insert_provider($data) {
 		global $wpdb;
@@ -536,7 +536,7 @@ class FileChi_DB {
 	/**
 	 * Encrypts sensitive fields in a settings array.
 	 *
-	 * @param array $settings
+	 * @param mixed $settings
 	 * @return array|WP_Error
 	 */
 	public static function encrypt_settings($settings) {
@@ -560,7 +560,7 @@ class FileChi_DB {
 	/**
 	 * Decrypts sensitive fields in a settings array and propagates decryption failures explicitly.
 	 *
-	 * @param array $settings
+	 * @param mixed $settings
 	 * @return array Decrypted settings, with _decryption_failed = true if any secret could not be decrypted.
 	 */
 	public static function decrypt_settings($settings) {
@@ -592,7 +592,7 @@ class FileChi_DB {
 	 * Redacts sensitive fields for safe admin output (replaces with asterisks).
 	 * If decryption fails for any stored secret, marks _decryption_failed = true so the admin UI can warn the user.
 	 *
-	 * @param array $settings
+	 * @param mixed $settings
 	 * @return array
 	 */
 	public static function redact_settings($settings) {

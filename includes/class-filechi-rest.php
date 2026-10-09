@@ -331,7 +331,6 @@ class FileChi_REST extends WP_REST_Controller {
 	public function get_migration_stats() {
 		$stats           = FileChi_DB::get_migration_stats();
 		$stats['status'] = get_option('filechi_migration_status', 'stopped');
-		$stats['is_as']  = FileChi_Migration::is_action_scheduler_active();
 		return rest_ensure_response($stats);
 	}
 

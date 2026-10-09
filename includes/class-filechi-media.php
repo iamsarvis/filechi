@@ -314,7 +314,7 @@ class FileChi_Media {
 	/**
 	 * Filters image srcset candidate URLs so all responsive image sizes point to remote storage.
 	 *
-	 * @param array  $sources Sources array.
+	 * @param array|false $sources Sources array or false.
 	 * @param array  $size_array Size array.
 	 * @param string $image_src Image source URL.
 	 * @param array  $image_meta Image metadata.
@@ -422,7 +422,7 @@ class FileChi_Media {
 			$files_to_delete[] = $dir_prefix . $metadata['original_image'];
 		}
 
-		if (!empty($metadata['sizes']) && is_array($metadata['sizes'])) {
+		if (!empty($metadata['sizes'])) {
 			foreach ($metadata['sizes'] as $size_data) {
 				if (!empty($size_data['file'])) {
 					$files_to_delete[] = $dir_prefix . $size_data['file'];
