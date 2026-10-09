@@ -20,6 +20,13 @@ class FileChi_Storage_Factory {
 	private static $instances = array();
 
 	/**
+	 * Tracks providers whose decryption failure has been logged in this request.
+	 *
+	 * @var array<string, bool>
+	 */
+	private static $logged_decryption_failures = array();
+
+	/**
 	 * Creates a storage driver from a provider database array or provider ID.
 	 *
 	 * @param array|int $provider Provider record or ID.
@@ -40,6 +47,16 @@ class FileChi_Storage_Factory {
 
 		$driver   = sanitize_key($provider['driver']);
 		$settings = is_array($provider['settings'] ?? null) ? $provider['settings'] : array();
+
+		// If secrets could not be decrypted, do not build driver with ciphertext credentials
+		if (!empty($settings['_decryption_failed']) || !empty($provider['_decryption_failed'])) {
+			$provider_key = !empty($provider['id']) ? (string) $provider['id'] : (!empty($provider['name']) ? (string) $provider['name'] : 'unknown');
+			if (!isset(self::$logged_decryption_failures[$provider_key])) {
+				self::$logged_decryption_failures[$provider_key] = true;
+				error_log(sprintf('FileChi: Stored credentials for provider "%s" could not be decrypted. Aborting storage driver creation.', $provider_key));
+			}
+			return null;
+		}
 
 		$instance = null;
 
@@ -78,5 +95,13 @@ class FileChi_Storage_Factory {
 			return null;
 		}
 		return self::create($default_provider);
+	}
+
+	/**
+	 * Clears static instance and logging cache (useful in testing).
+	 */
+	public static function clear_instances() {
+		self::$instances                   = array();
+		self::$logged_decryption_failures = array();
 	}
 }

@@ -74,9 +74,9 @@ class FileChi_Media {
 	 * Phase 2: If all succeed, set offloaded meta and delete local files (if keep_local_files is off).
 	 * On any failure: delete nothing locally, do not set offload flag, log error, and schedule one retry.
 	 *
-	 * @param int        $attachment_id Attachment post ID.
-	 * @param array|null $provider      Optional provider record. Defaults to active provider.
-	 * @param array|null $metadata      Optional metadata. Fetched if null.
+	 * @param int            $attachment_id Attachment post ID.
+	 * @param array|int|null $provider      Optional provider record or ID. Defaults to active provider.
+	 * @param array|null     $metadata      Optional metadata. Fetched if null.
 	 * @return bool True if successfully offloaded, false otherwise.
 	 */
 	public static function offload_attachment($attachment_id, $provider = null, $metadata = null) {
@@ -88,7 +88,23 @@ class FileChi_Media {
 		if ($provider === null) {
 			$provider = FileChi_DB::get_default_provider();
 		}
+		if (is_numeric($provider)) {
+			$provider = FileChi_DB::get_provider((int) $provider, true);
+		}
 		if (!$provider) {
+			return false;
+		}
+
+		$provider_settings = is_array($provider['settings'] ?? null) ? $provider['settings'] : array();
+		if (!empty($provider_settings['_decryption_failed']) || !empty($provider['_decryption_failed'])) {
+			$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
+			if (empty($attached_file) && is_array($metadata) && !empty($metadata['file'])) {
+				$attached_file = $metadata['file'];
+			}
+			$file_path   = $attached_file ?: 'unknown';
+			$provider_id = !empty($provider['id']) ? (int) $provider['id'] : 0;
+			FileChi_DB::log_transfer($attachment_id, $provider_id, $file_path, 0, 'failed', __('credentials cannot be decrypted', 'filechi'));
+			FileChi_Storage_Factory::create($provider);
 			return false;
 		}
 
