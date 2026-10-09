@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<ruleset name="FileChi Security Ruleset">
+    <description>FileChi security and database ruleset running five critical WordPress sniffs.</description>
+
+    <!-- Scan target files -->
+    <file>filechi.php</file>
+    <file>uninstall.php</file>
+    <file>includes</file>
+
+    <!-- Exclude third-party and dev dependencies -->
+    <exclude-pattern>*/includes/vendor/*</exclude-pattern>
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+
+    <!-- Command line arguments -->
+    <arg value="s"/>
+    <arg name="colors"/>
+
+    <!-- 1. Output Escaping -->
+    <rule ref="WordPress.Security.EscapeOutput"/>
+
+    <!-- 2. Nonce Verification -->
+    <rule ref="WordPress.Security.NonceVerification"/>
+
+    <!-- 3. Input Sanitization -->
+    <rule ref="WordPress.Security.ValidatedSanitizedInput"/>
+
+    <!-- 4. Prepared SQL Statements -->
+    <rule ref="WordPress.DB.PreparedSQL"/>
+
+    <!-- 5. Direct Database Queries: Custom tables (wp_filechi_providers, wp_filechi_transfer_logs)
+         require direct $wpdb queries because WordPress has no native CRUD abstraction for them.
+         Exclude caching and schema change warnings, while keeping direct query rules governed. -->
+    <rule ref="WordPress.DB.DirectDatabaseQuery">
+        <exclude name="WordPress.DB.DirectDatabaseQuery.DirectQuery"/>
+        <exclude name="WordPress.DB.DirectDatabaseQuery.NoCaching"/>
+        <exclude name="WordPress.DB.DirectDatabaseQuery.SchemaChange"/>
+    </rule>
+</ruleset>

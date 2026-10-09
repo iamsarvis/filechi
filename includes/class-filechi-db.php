@@ -52,6 +52,7 @@ class FileChi_DB {
 		global $wpdb;
 		$table = self::get_providers_table();
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		$results = $wpdb->get_results("SELECT * FROM {$table} ORDER BY is_default DESC, id ASC", ARRAY_A);
 		if (!is_array($results)) {
 			return array();
@@ -85,8 +86,8 @@ class FileChi_DB {
 		$table = self::get_providers_table();
 		$id    = absint($id);
 
-		$query = $wpdb->prepare("SELECT * FROM {$table} WHERE id = %d LIMIT 1", $id);
-		$row   = $wpdb->get_row($query, ARRAY_A);
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id = %d LIMIT 1", $id), ARRAY_A);
 
 		if (!$row) {
 			return null;
@@ -114,11 +115,12 @@ class FileChi_DB {
 		global $wpdb;
 		$table = self::get_providers_table();
 
-		$query = "SELECT * FROM {$table} WHERE is_default = 1 LIMIT 1";
-		$row   = $wpdb->get_row($query, ARRAY_A);
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$row = $wpdb->get_row("SELECT * FROM {$table} WHERE is_default = 1 LIMIT 1", ARRAY_A);
 
 		if (!$row) {
 			// Fallback: first provider if none explicitly marked default
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 			$row = $wpdb->get_row("SELECT * FROM {$table} ORDER BY id ASC LIMIT 1", ARRAY_A);
 		}
 
@@ -138,7 +140,7 @@ class FileChi_DB {
 	 * Inserts a new provider profile.
 	 *
 	 * @param array $data Provider details (name, driver, is_default, settings).
-	 * @return int|false Inserted ID or false on failure.
+	 * @return int|false|WP_Error Inserted ID, false on failure, or WP_Error on encryption error.
 	 */
 	public static function insert_provider($data) {
 		global $wpdb;
@@ -156,7 +158,9 @@ class FileChi_DB {
 		}
 
 		// If this is set as default or the first provider, clear any previous default
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		if ($is_default || $wpdb->get_var("SELECT COUNT(*) FROM {$table}") == 0) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 			$wpdb->query("UPDATE {$table} SET is_default = 0");
 			$is_default = 1;
 		}
@@ -194,6 +198,7 @@ class FileChi_DB {
 		$table = self::get_providers_table();
 		$id    = absint($id);
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		$existing_row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id = %d", $id), ARRAY_A);
 		if (!$existing_row) {
 			return false;
@@ -217,6 +222,7 @@ class FileChi_DB {
 		if (isset($data['is_default'])) {
 			$is_default = !empty($data['is_default']) ? 1 : 0;
 			if ($is_default) {
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 				$wpdb->query("UPDATE {$table} SET is_default = 0");
 			}
 			$update['is_default'] = $is_default;
@@ -312,12 +318,14 @@ class FileChi_DB {
 			);
 		}
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		$was_default = (int) $wpdb->get_var($wpdb->prepare("SELECT is_default FROM {$table} WHERE id = %d", $id));
 
 		$res = $wpdb->delete($table, array('id' => $id), array('%d'));
 
 		// If deleted was default, promote another
 		if ($res && $was_default) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 			$next_id = $wpdb->get_var("SELECT id FROM {$table} ORDER BY id ASC LIMIT 1");
 			if ($next_id) {
 				$wpdb->update($table, array('is_default' => 1), array('id' => $next_id), array('%d'), array('%d'));
@@ -338,6 +346,7 @@ class FileChi_DB {
 		$table = self::get_providers_table();
 		$id    = absint($id);
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		$wpdb->query("UPDATE {$table} SET is_default = 0");
 		$res = $wpdb->update($table, array('is_default' => 1), array('id' => $id), array('%d'), array('%d'));
 		return $res !== false;
@@ -362,24 +371,14 @@ class FileChi_DB {
 
 		// Check if record exists for this attachment and file_path
 		$existing_id = $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT id FROM {$table} WHERE attachment_id = %d AND file_path = %s LIMIT 1",
-				$attachment_id,
-				$file_path
-			)
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+			$wpdb->prepare("SELECT id FROM {$table} WHERE attachment_id = %d AND file_path = %s LIMIT 1", $attachment_id, $file_path)
 		);
 
 		if ($existing_id) {
 			$wpdb->query(
-				$wpdb->prepare(
-					"UPDATE {$table} SET provider_id = %d, file_size = %d, status = %s, error_message = %s, attempts = attempts + 1, updated_at = %s WHERE id = %d",
-					$provider_id,
-					$file_size,
-					$status,
-					$error_message,
-					$now,
-					$existing_id
-				)
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+				$wpdb->prepare("UPDATE {$table} SET provider_id = %d, file_size = %d, status = %s, error_message = %s, attempts = attempts + 1, updated_at = %s WHERE id = %d", $provider_id, $file_size, $status, $error_message, $now, $existing_id)
 			);
 			return (int) $existing_id;
 		}
@@ -438,6 +437,7 @@ class FileChi_DB {
 		$params[]  = $limit;
 		$params[]  = $offset;
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Dynamic query string with placeholders only; values are passed via $params.
 		$results = $wpdb->get_results($wpdb->prepare($query_sql, $params), ARRAY_A);
 		return is_array($results) ? $results : array();
 	}
@@ -453,9 +453,11 @@ class FileChi_DB {
 		$table = self::get_logs_table();
 
 		if (!empty($status)) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 			return (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE status = %s", sanitize_key($status)));
 		}
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		return (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table}");
 	}
 
@@ -469,18 +471,18 @@ class FileChi_DB {
 		global $wpdb;
 
 		$limit = absint($limit);
-		$query = $wpdb->prepare(
-			"SELECT p.ID FROM {$wpdb->posts} p
-			 LEFT JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id AND pm.meta_key = '_filechi_offloaded')
-			 WHERE p.post_type = 'attachment'
-			   AND p.post_status = 'inherit'
-			   AND pm.meta_value IS NULL
-			 ORDER BY p.ID DESC
-			 LIMIT %d",
-			$limit
+		return $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT p.ID FROM {$wpdb->posts} p
+				 LEFT JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id AND pm.meta_key = '_filechi_offloaded')
+				 WHERE p.post_type = 'attachment'
+				   AND p.post_status = 'inherit'
+				   AND pm.meta_value IS NULL
+				 ORDER BY p.ID DESC
+				 LIMIT %d",
+				$limit
+			)
 		);
-
-		return $wpdb->get_col($query);
 	}
 
 	/**
@@ -503,14 +505,12 @@ class FileChi_DB {
 		);
 
 		// Total bytes transferred
-		$total_bytes = (double) $wpdb->get_var(
-			"SELECT SUM(file_size) FROM {$logs_table} WHERE status = 'transferred'"
-		);
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$total_bytes = (double) $wpdb->get_var("SELECT SUM(file_size) FROM {$logs_table} WHERE status = 'transferred'");
 
 		// Failed count
-		$failed_count = (int) $wpdb->get_var(
-			"SELECT COUNT(*) FROM {$logs_table} WHERE status = 'failed'"
-		);
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$failed_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$logs_table} WHERE status = 'failed'");
 
 		return array(
 			'total'       => $total_attachments,
@@ -530,13 +530,14 @@ class FileChi_DB {
 		global $wpdb;
 		$table = self::get_logs_table();
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		return (int) $wpdb->query("UPDATE {$table} SET status = 'pending', error_message = NULL WHERE status = 'failed'");
 	}
 
 	/**
 	 * Encrypts sensitive fields in a settings array.
 	 *
-	 * @param array $settings
+	 * @param mixed $settings
 	 * @return array|WP_Error
 	 */
 	public static function encrypt_settings($settings) {
@@ -560,7 +561,7 @@ class FileChi_DB {
 	/**
 	 * Decrypts sensitive fields in a settings array and propagates decryption failures explicitly.
 	 *
-	 * @param array $settings
+	 * @param mixed $settings
 	 * @return array Decrypted settings, with _decryption_failed = true if any secret could not be decrypted.
 	 */
 	public static function decrypt_settings($settings) {
@@ -592,7 +593,7 @@ class FileChi_DB {
 	 * Redacts sensitive fields for safe admin output (replaces with asterisks).
 	 * If decryption fails for any stored secret, marks _decryption_failed = true so the admin UI can warn the user.
 	 *
-	 * @param array $settings
+	 * @param mixed $settings
 	 * @return array
 	 */
 	public static function redact_settings($settings) {

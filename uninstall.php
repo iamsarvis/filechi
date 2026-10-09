@@ -29,6 +29,7 @@ function filechi_uninstall_site() {
 	wp_clear_scheduled_hook( 'filechi_retry_attachment_offload' );
 
 	// Delete all FileChi transients
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Bulk cleanup of plugin transients on uninstall.
 	$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_filechi_%' OR option_name LIKE '_transient_timeout_filechi_%'" );
 
 	// 2. Check if user enabled "Delete all data on uninstall"
@@ -44,10 +45,10 @@ function filechi_uninstall_site() {
 	// NOTE: We NEVER touch remote storage! Only local WordPress tables and metadata are removed.
 
 	// Drop custom database tables
-	$table_providers = $wpdb->prefix . 'filechi_providers';
-	$table_logs      = $wpdb->prefix . 'filechi_logs';
-	$wpdb->query( "DROP TABLE IF EXISTS {$table_logs}" );
-	$wpdb->query( "DROP TABLE IF EXISTS {$table_providers}" );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.DirectQuery -- Necessary cleanup on opt-in plugin uninstall.
+	$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}filechi_logs" );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.DirectQuery -- Necessary cleanup on opt-in plugin uninstall.
+	$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}filechi_providers" );
 
 	// Delete options
 	delete_option( 'filechi_settings' );
@@ -56,6 +57,7 @@ function filechi_uninstall_site() {
 	delete_option( 'filechi_protected_path_missing_notice' );
 
 	// Delete attachment post meta (_filechi_*)
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Bulk cleanup of attachment metadata on uninstall.
 	$wpdb->query( "DELETE FROM {$wpdb->postmeta} WHERE meta_key LIKE '_filechi_%'" );
 }
 

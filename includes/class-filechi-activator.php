@@ -88,7 +88,7 @@ class FileChi_Activator {
 				'migration_batch_size'      => 10,
 				'delete_data_on_uninstall'  => 0, // Default: keep all plugin data on uninstall
 			);
-			add_option('filechi_settings', $defaults, '', 'no'); // do not autoload large blobs
+			add_option('filechi_settings', $defaults, '', false); // do not autoload large blobs
 		}
 	}
 

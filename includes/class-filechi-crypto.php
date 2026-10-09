@@ -61,7 +61,7 @@ class FileChi_Crypto {
 	 *
 	 * Fail-closed: returns WP_Error (or throws RuntimeException) if neither cipher is available.
 	 *
-	 * @param string      $plaintext Data to encrypt.
+	 * @param string|null $plaintext Data to encrypt.
 	 * @param string|null $key       Optional 32-byte binary key override for testing.
 	 * @return string|WP_Error Base64-encoded encrypted payload or WP_Error on failure.
 	 */
@@ -116,7 +116,7 @@ class FileChi_Crypto {
 	 *
 	 * Fail-closed: returns distinguishable false on tampering, bad key, or corrupt data.
 	 *
-	 * @param string      $encrypted_str Base64-encoded encrypted string.
+	 * @param string|null $encrypted_str Base64-encoded encrypted string.
 	 * @param string|null $key           Optional 32-byte binary key override for testing.
 	 * @return string|false Decrypted plaintext, '' if input empty, or false on decryption failure/tampering.
 	 */
