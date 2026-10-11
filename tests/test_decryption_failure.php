@@ -141,4 +141,82 @@ assert(!isset($last_inserted_settings['_csrf_token']), '_-prefixed keys must be 
 assert($last_inserted_settings['host'] === 'sftp.new.com', 'Valid settings must be kept');
 echo "[+] insert_provider() dropped _-prefixed and *_decryption_failed keys: PASS\n";
 
+echo "\n=== 6. Recovery: updating provider with new secret replaces undecryptable credentials ===\n";
+// Setup provider whose stored secret cannot be decrypted (corrupted or previous encryption scheme)
+$old_undecryptable_secret = 'invalid:unreadable:legacy_ciphertext';
+$provider_recov_id        = 7;
+$stored_settings_json     = wp_json_encode(array(
+	'host'     => 'sftp.example.com',
+	'username' => 'sftpuser',
+	'password' => $old_undecryptable_secret,
+));
+
+$wpdb->get_row_override = array(
+	'id'         => $provider_recov_id,
+	'name'       => 'Corrupted Provider',
+	'driver'     => 'sftp',
+	'is_default' => 0,
+	'settings'   => $stored_settings_json,
+);
+
+// Verify before recovery: get_provider flags decryption failure and Factory refuses creation
+$broken_provider_decrypted = FileChi_DB::get_provider($provider_recov_id, true);
+assert(is_array($broken_provider_decrypted), 'Broken provider row must be loaded');
+assert(!empty($broken_provider_decrypted['settings']['_decryption_failed']), '_decryption_failed must be set before recovery');
+FileChi_Storage_Factory::clear_instances();
+assert(FileChi_Storage_Factory::create($broken_provider_decrypted) === null, 'Driver creation must fail before recovery');
+
+// Submit new valid secret through real FileChi_DB::update_provider()
+$new_secret_plaintext = 'new_strong_password_2026';
+$submitted_recovery   = array(
+	'name'     => 'Corrupted Provider',
+	'driver'   => 'sftp',
+	'settings' => array(
+		'host'     => 'sftp.example.com',
+		'username' => 'sftpuser',
+		'password' => $new_secret_plaintext,
+	),
+);
+
+$updated_db_settings = null;
+$wpdb->on_update = function($table, $data, $where) use (&$updated_db_settings, &$wpdb, $provider_recov_id) {
+	if (isset($data['settings'])) {
+		$updated_db_settings = json_decode($data['settings'], true);
+		// Update DB state for subsequent queries
+		$wpdb->get_row_override = array(
+			'id'         => $provider_recov_id,
+			'name'       => 'Corrupted Provider',
+			'driver'     => 'sftp',
+			'is_default' => 0,
+			'settings'   => $data['settings'],
+		);
+	}
+};
+
+$update_success = FileChi_DB::update_provider($provider_recov_id, $submitted_recovery);
+assert($update_success === true, 'update_provider must return true on recovery');
+
+// 1. Verify new value is stored encrypted, not plaintext or old corrupted secret
+assert(is_array($updated_db_settings), 'Updated settings must be saved');
+assert($updated_db_settings['password'] !== $new_secret_plaintext, 'New secret must be stored encrypted at rest');
+assert($updated_db_settings['password'] !== $old_undecryptable_secret, 'Old corrupted ciphertext must be replaced');
+assert(FileChi_Crypto::decrypt($updated_db_settings['password']) === $new_secret_plaintext, 'Stored ciphertext must decrypt to new secret');
+
+// 2. Verify _decryption_failed is gone from the response
+$recovered_provider_rest = FileChi_DB::get_provider($provider_recov_id, false);
+assert(is_array($recovered_provider_rest), 'Provider must be retrieved');
+assert(empty($recovered_provider_rest['settings']['_decryption_failed']), '_decryption_failed must be gone from REST response');
+assert(empty($recovered_provider_rest['settings']['password_decryption_failed']), 'password_decryption_failed must be gone');
+assert($recovered_provider_rest['settings']['password'] === '********', 'Password must be redacted for REST response');
+
+// 3. Verify driver can now be created successfully
+$recovered_provider_full = FileChi_DB::get_provider($provider_recov_id, true);
+assert(empty($recovered_provider_full['settings']['_decryption_failed']), '_decryption_failed must be gone from decrypted settings');
+assert($recovered_provider_full['settings']['password'] === $new_secret_plaintext, 'Decrypted password must match new secret');
+
+FileChi_Storage_Factory::clear_instances();
+$recovered_driver = FileChi_Storage_Factory::create($recovered_provider_full);
+assert($recovered_driver instanceof FileChi_Storage_SFTP, 'Storage driver must be successfully instantiated after recovery');
+echo "[+] Recovery of provider whose credentials could not be decrypted: PASS\n";
+
 echo "\nALL DECRYPTION FAILURE TESTS PASSED!\n";
