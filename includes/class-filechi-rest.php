@@ -173,6 +173,16 @@ class FileChi_REST extends WP_REST_Controller {
 	}
 
 	/**
+	 * Alias for get_providers.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public function list_providers($request) {
+		return $this->get_providers($request);
+	}
+
+	/**
 	 * Creates a new provider.
 	 *
 	 * @param WP_REST_Request $request
