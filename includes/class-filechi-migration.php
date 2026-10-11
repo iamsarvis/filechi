@@ -81,9 +81,8 @@ class FileChi_Migration {
 			return;
 		}
 
-		$settings   = get_option('filechi_settings', array());
+		$settings   = wp_parse_args(get_option('filechi_settings', array()), FileChi_Activator::default_settings());
 		$batch_size = !empty($settings['migration_batch_size']) ? absint($settings['migration_batch_size']) : 10;
-		$keep_local = !empty($settings['keep_local_files']);
 
 		$unmigrated_ids = FileChi_DB::get_unmigrated_attachment_ids($batch_size);
 
@@ -92,9 +91,6 @@ class FileChi_Migration {
 			update_option('filechi_migration_status', 'completed');
 			return;
 		}
-
-		$upload_dir = wp_upload_dir();
-		$basedir    = wp_normalize_path($upload_dir['basedir']);
 
 		foreach ($unmigrated_ids as $attachment_id) {
 			$attachment_id = absint($attachment_id);

@@ -47,12 +47,12 @@ class FileChi_WooCommerce {
 	 * @return string
 	 */
 	public function filter_download_path($file_path, $product_id, $download_id) {
-		$settings = get_option('filechi_settings', array());
-		if (empty($settings['wc_signed_downloads'] ?? 1)) {
+		$settings = wp_parse_args(get_option('filechi_settings', array()), FileChi_Activator::default_settings());
+		if (empty($settings['wc_signed_downloads'])) {
 			return $file_path;
 		}
 
-		$expiry = absint($settings['wc_download_expiry'] ?? 900);
+		$expiry = absint($settings['wc_download_expiry']);
 		if ($expiry <= 0) {
 			$expiry = 900; // 15 minutes default
 		}

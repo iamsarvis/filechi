@@ -77,11 +77,11 @@ The following third-party libraries are bundled with FileChi under their respect
 | **phpseclib/phpseclib** | 3.0.57 | MIT | `includes/vendor/phpseclib/LICENSE` |
 | **paragonie/constant_time_encoding** | v3.1.3 | MIT | `includes/vendor/paragonie/constant_time_encoding/LICENSE.txt` |
 | **paragonie/random_compat** | v9.99.100 | MIT | Bundled with constant_time_encoding |
-| **woocommerce/action-scheduler** | 4.2.0 | GPL-3.0 | `includes/vendor/woocommerce/action-scheduler/license.txt` |
+| **woocommerce/action-scheduler** | 4.2.0 | GPL-3.0-or-later | `includes/vendor/woocommerce/action-scheduler/license.txt` |
 
 ---
 
 ## 📄 License
 
-FileChi is software created by **Sobhan Askari** and licensed under the [GNU General Public License v2.0 or later](https://www.gnu.org/licenses/gpl-2.0.htm).
+FileChi is software created by **Sobhan Askari** and licensed under the [GNU General Public License v2.0 or later](https://www.gnu.org/licenses/gpl-2.0.html).
 

@@ -149,7 +149,15 @@ class FileChi_DB {
 		$name       = sanitize_text_field($data['name'] ?? '');
 		$driver     = sanitize_key($data['driver'] ?? 'sftp');
 		$is_default = !empty($data['is_default']) ? 1 : 0;
-		$settings   = is_array($data['settings'] ?? null) ? $data['settings'] : array();
+		$raw_settings = is_array($data['settings'] ?? null) ? $data['settings'] : array();
+		$settings     = array();
+		foreach ($raw_settings as $k => $v) {
+			$k_str = (string) $k;
+			if (strpos($k_str, '_') === 0 || substr($k_str, -18) === '_decryption_failed') {
+				continue;
+			}
+			$settings[$k] = $v;
+		}
 
 		// Encrypt credentials before storing
 		$encrypted_settings = self::encrypt_settings($settings);
@@ -230,20 +238,28 @@ class FileChi_DB {
 		}
 
 		if (isset($data['settings']) && is_array($data['settings'])) {
-			$submitted = $data['settings'];
+			$submitted = array();
+			foreach ($data['settings'] as $k => $v) {
+				$k_str = (string) $k;
+				if (strpos($k_str, '_') === 0 || substr($k_str, -18) === '_decryption_failed') {
+					continue;
+				}
+				$submitted[$k] = $v;
+			}
 
-			// Merge submitted settings over existing settings rather than replacing whole settings object
-			$merged_settings = $existing_settings;
-
-			// Remove internal runtime failure markers
-			unset($merged_settings['_decryption_failed']);
-			foreach (self::$sensitive_keys as $skey) {
-				unset($merged_settings[$skey . '_decryption_failed']);
+			// Clean existing settings and merge non-sensitive submitted fields
+			$merged_settings = array();
+			foreach ($existing_settings as $k => $v) {
+				$k_str = (string) $k;
+				if (strpos($k_str, '_') === 0 || substr($k_str, -18) === '_decryption_failed') {
+					continue;
+				}
+				$merged_settings[$k] = $v;
 			}
 
 			// Copy non-sensitive submitted fields
 			foreach ($submitted as $k => $v) {
-				if (!in_array($k, self::$sensitive_keys, true) && $k !== '_decryption_failed') {
+				if (!in_array($k, self::$sensitive_keys, true)) {
 					$merged_settings[$k] = $v;
 				}
 			}
@@ -576,6 +592,7 @@ class FileChi_DB {
 				if ($decrypted === false) {
 					$has_failure = true;
 					$settings[$key . '_decryption_failed'] = true;
+					$settings[$key] = '';
 				} else {
 					$settings[$key] = $decrypted;
 				}

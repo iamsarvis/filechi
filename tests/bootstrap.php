@@ -31,6 +31,12 @@ if (!defined('LOGGED_IN_SALT')) {
 if (!defined('NONCE_SALT')) {
 	define('NONCE_SALT', 'test_nonce_salt_1234567890abcdefghijklmnopqrstuvwxyz');
 }
+if (!defined('ARRAY_A')) {
+	define('ARRAY_A', 'ARRAY_A');
+}
+if (!defined('OBJECT')) {
+	define('OBJECT', 'OBJECT');
+}
 
 // Global state arrays for mocks
 if (!isset($GLOBALS['mock_options'])) {
@@ -47,6 +53,12 @@ if (!isset($GLOBALS['mock_unscheduled_actions'])) {
 }
 if (!isset($GLOBALS['mock_scheduled_hooks_cleared'])) {
 	$GLOBALS['mock_scheduled_hooks_cleared'] = array();
+}
+
+if (!function_exists('wp_json_encode')) {
+	function wp_json_encode($data, $options = 0, $depth = 512) {
+		return json_encode($data, $options, $depth);
+	}
 }
 
 if (!class_exists('WP_Error')) {
@@ -158,6 +170,12 @@ if (!function_exists('wp_parse_url')) {
 if (!function_exists('wp_normalize_path')) {
 	function wp_normalize_path($path) {
 		return str_replace('\\', '/', (string) $path);
+	}
+}
+
+if (!function_exists('current_time')) {
+	function current_time($type, $gmt = 0) {
+		return $type === 'mysql' ? gmdate('Y-m-d H:i:s') : time();
 	}
 }
 
@@ -335,9 +353,47 @@ if (!class_exists('Mock_WPDB')) {
 			return 1;
 		}
 
-		public function update($table, $data, $where, $data_format, $where_format) {
+		public $get_row_override = null;
+		public $on_insert        = null;
+		public $on_update        = null;
+		public $insert_id        = 1;
+
+		public function get_row($query, $output = 'ARRAY_A') {
+			$this->queries[] = $query;
+			if ($this->get_row_override !== null) {
+				return $this->get_row_override;
+			}
+			return null;
+		}
+
+		public function insert($table, $data, $format = null) {
+			$vals = array_map(function($v) {
+				return is_null($v) ? 'NULL' : (is_scalar($v) ? (string) $v : json_encode($v));
+			}, $data);
+			$this->queries[] = "INSERT INTO $table (" . implode(', ', array_keys($data)) . ") VALUES ('" . implode("', '", $vals) . "')";
+			if (is_callable($this->on_insert)) {
+				call_user_func($this->on_insert, $table, $data);
+			}
 			return 1;
 		}
+
+		public function update($table, $data, $where, $data_format = null, $where_format = null) {
+			$this->queries[] = "UPDATE $table SET ...";
+			if (is_callable($this->on_update)) {
+				call_user_func($this->on_update, $table, $data, $where);
+			}
+			return 1;
+		}
+
+		public function get_charset_collate() {
+			return 'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
+		}
+	}
+}
+
+if (!function_exists('dbDelta')) {
+	function dbDelta($queries = '') {
+		return array();
 	}
 }
 
@@ -369,3 +425,49 @@ function filechi_create_test_provider($id = 1, $driver = 'sftp', $settings = arr
 		'is_default' => (int) $is_default,
 	);
 }
+
+if (!class_exists('WP_REST_Controller')) {
+	class WP_REST_Controller {
+		protected $namespace = '';
+		protected $rest_base = '';
+	}
+}
+
+if (!class_exists('WP_REST_Response')) {
+	class WP_REST_Response {
+		public $data;
+		public $status;
+		public function __construct($data = null, $status = 200) {
+			$this->data   = $data;
+			$this->status = $status;
+		}
+		public function get_data() {
+			return $this->data;
+		}
+		public function get_status() {
+			return $this->status;
+		}
+	}
+}
+
+if (!function_exists('rest_ensure_response')) {
+	function rest_ensure_response($response) {
+		if ($response instanceof WP_REST_Response) {
+			return $response;
+		}
+		return new WP_REST_Response($response);
+	}
+}
+
+if (!class_exists('WP_REST_Request')) {
+	class WP_REST_Request {
+		protected $params = array();
+		public function __construct($method = 'GET', $route = '') {}
+		public function set_param($key, $value) { $this->params[$key] = $value; }
+		public function get_params() { return $this->params; }
+		public function get_param($key) { return $this->params[$key] ?? null; }
+		public function get_json_params() { return $this->params; }
+	}
+}
+
+require_once FILECHI_DIR . 'includes/class-filechi-activator.php';
