@@ -1,5 +1,5 @@
 <?php
-// REAL
+// MOCK
 /**
  * Test: Handling of Providers Whose Secrets Cannot Be Decrypted (Item 2.3)
  * Uses REAL shape fixtures (provider rows use key 'driver', never 'type').

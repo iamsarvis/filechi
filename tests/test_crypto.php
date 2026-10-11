@@ -1,5 +1,5 @@
 <?php
-// REAL
+// MOCK
 /**
  * Test: FileChi_Crypto Authenticated Encryption & SigV4 Signatures
  */
