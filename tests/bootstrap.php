@@ -19,6 +19,9 @@ if (!defined('FILECHI_FILE')) {
 if (!defined('FILECHI_VERSION')) {
 	define('FILECHI_VERSION', '2.0.0');
 }
+if (!defined('FILECHI_URL')) {
+	define('FILECHI_URL', 'https://example.com/wp-content/plugins/filechi/');
+}
 if (!defined('AUTH_KEY')) {
 	define('AUTH_KEY', 'test_auth_key_1234567890abcdefghijklmnopqrstuvwxyz');
 }
@@ -131,6 +134,12 @@ if (!function_exists('esc_html__')) {
 	}
 }
 
+if (!function_exists('esc_html_e')) {
+	function esc_html_e($text, $domain = 'default') {
+		echo esc_html($text);
+	}
+}
+
 if (!function_exists('__')) {
 	function __($text, $domain = 'default') {
 		return $text;
@@ -140,6 +149,73 @@ if (!function_exists('__')) {
 if (!function_exists('_n')) {
 	function _n($single, $plural, $number, $domain = 'default') {
 		return $number === 1 ? $single : $plural;
+	}
+}
+
+if (!function_exists('esc_url_raw')) {
+	function esc_url_raw($url) {
+		return (string) $url;
+	}
+}
+
+if (!function_exists('esc_url')) {
+	function esc_url($url) {
+		return (string) $url;
+	}
+}
+
+if (!function_exists('esc_js')) {
+	function esc_js($text) {
+		return addcslashes((string) $text, "\\\'\"&\n\r<>");
+	}
+}
+
+if (!function_exists('rest_url')) {
+	function rest_url($path = '') {
+		return 'https://example.com/wp-json/' . ltrim($path, '/');
+	}
+}
+
+if (!function_exists('admin_url')) {
+	function admin_url($path = '') {
+		return 'https://example.com/wp-admin/' . ltrim($path, '/');
+	}
+}
+
+if (!function_exists('wp_create_nonce')) {
+	function wp_create_nonce($action = -1) {
+		return substr(md5('nonce_' . $action . '_filechi'), 0, 10);
+	}
+}
+
+if (!function_exists('check_ajax_referer')) {
+	function check_ajax_referer($action = -1, $query_arg = false, $die = true) {
+		$nonce = '';
+		if ($query_arg && isset($_REQUEST[$query_arg])) {
+			$nonce = $_REQUEST[$query_arg];
+		} elseif (isset($_REQUEST['_ajax_nonce'])) {
+			$nonce = $_REQUEST['_ajax_nonce'];
+		}
+		$expected = wp_create_nonce($action);
+		if ($nonce !== $expected) {
+			if ($die) {
+				exit('Invalid nonce');
+			}
+			return false;
+		}
+		return true;
+	}
+}
+
+if (!function_exists('wp_send_json_success')) {
+	function wp_send_json_success($data = null, $status_code = null) {
+		return true;
+	}
+}
+
+if (!function_exists('wp_send_json_error')) {
+	function wp_send_json_error($data = null, $status_code = null) {
+		return false;
 	}
 }
 

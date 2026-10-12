@@ -96,20 +96,20 @@ class FileChi_Admin {
 		if ($wc_active) {
 			if (defined('WC_VERSION')) {
 				$wc_version = (string) WC_VERSION;
-			} elseif (function_exists('WC') && isset(WC()->version)) {
+			} elseif (function_exists('WC') && !empty(WC()->version)) {
 				$wc_version = (string) WC()->version;
 			}
 		}
 
 		$wc_hpos_enabled = false;
-		if ($wc_active && class_exists('\Automattic\WooCommerce\Utilities\OrderUtil') && method_exists('\Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled')) {
+		if ($wc_active && class_exists('\Automattic\WooCommerce\Utilities\OrderUtil')) {
 			$wc_hpos_enabled = (bool) \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
 		}
 
 		return array(
 			'restUrl'       => esc_url_raw(rest_url('filechi/v1')),
 			'nonce'         => wp_create_nonce('wp_rest'),
-			'pluginUrl'     => FILECHI_URL,
+			'pluginUrl'     => defined('FILECHI_URL') ? FILECHI_URL : '',
 			'version'       => defined('FILECHI_VERSION') ? FILECHI_VERSION : '1.0.0',
 			'woocommerce'   => array(
 				'active'       => (bool) $wc_active,
