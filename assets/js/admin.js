@@ -164,6 +164,9 @@
 			} else if (preset === 'parspack') {
 				s.region = 'default';
 				s.path_style = 1;
+				if (s.endpoint === 'https://s3.ir-thr-at1.arvanstorage.ir' || s.endpoint === 'https://s3.us-east-1.amazonaws.com') {
+					s.endpoint = '';
+				}
 			} else if (preset === 'aws') {
 				s.endpoint = 'https://s3.us-east-1.amazonaws.com';
 				s.region = 'us-east-1';
@@ -770,8 +773,10 @@
 							label: 'Endpoint URL',
 							value: s.endpoint || '',
 							onChange: (val) => updateSettingField('endpoint', val),
-							placeholder: 'https://s3.ir-thr-at1.arvanstorage.ir',
-							help: 'Full S3 REST API endpoint including https://',
+							placeholder: s.provider_type === 'parspack' ? 'https://...' : 'https://s3.ir-thr-at1.arvanstorage.ir',
+							help: s.provider_type === 'parspack'
+								? 'ParsPack does not publish a fixed endpoint. Copy the S3 endpoint from your ParsPack panel into the field above.'
+								: 'Full S3 REST API endpoint including https://',
 						}),
 						el(TextControl, {
 							label: 'Bucket Name',
