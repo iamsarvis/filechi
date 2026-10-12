@@ -495,6 +495,9 @@
 				el(TextControl, {
 					label: 'Migration Batch Size',
 					type: 'number',
+					min: 1,
+					max: 50,
+					step: 1,
 					help: 'Number of media files processed in each background Action Scheduler task (1 - 50).',
 					value: settings.migration_batch_size || 10,
 					onChange: (val) => setSettings(Object.assign({}, settings, { migration_batch_size: parseInt(val, 10) || 10 })),
