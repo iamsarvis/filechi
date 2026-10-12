@@ -10,7 +10,9 @@
  * 3. Verifies that scoped classes load properly and global/unprefixed classes do not exist.
  */
 
-require_once __DIR__ . '/bootstrap.php';
+if (!defined('FILECHI_DIR')) {
+	define('FILECHI_DIR', dirname(__DIR__) . '/');
+}
 require_once FILECHI_DIR . 'includes/vendor/autoload.php';
 
 /**

@@ -305,11 +305,18 @@ if (!function_exists('is_multisite')) {
 	}
 }
 
+if (!function_exists('current_user_can')) {
+	function current_user_can($capability, ...$args) {
+		return true;
+	}
+}
+
 if (!class_exists('Mock_WPDB')) {
 	class Mock_WPDB {
 		public $prefix          = 'wp_';
 		public $options         = 'wp_options';
 		public $postmeta        = 'wp_postmeta';
+		public $posts           = 'wp_posts';
 		public $table_providers = 'wp_filechi_providers';
 		public $table_logs      = 'wp_filechi_logs';
 		public $queries         = array();
@@ -317,6 +324,9 @@ if (!class_exists('Mock_WPDB')) {
 		public $deleted         = array();
 
 		public function prepare($query, ...$args) {
+			if (isset($args[0]) && is_array($args[0])) {
+				$args = $args[0];
+			}
 			foreach ($args as $arg) {
 				$val   = is_numeric($arg) ? $arg : "'" . addslashes((string) $arg) . "'";
 				$query = preg_replace('/%[dfs]/', $val, $query, 1);
@@ -353,10 +363,11 @@ if (!class_exists('Mock_WPDB')) {
 			return 1;
 		}
 
-		public $get_row_override = null;
-		public $on_insert        = null;
-		public $on_update        = null;
-		public $insert_id        = 1;
+		public $get_row_override     = null;
+		public $get_results_override = null;
+		public $on_insert            = null;
+		public $on_update            = null;
+		public $insert_id            = 1;
 
 		public function get_row($query, $output = 'ARRAY_A') {
 			$this->queries[] = $query;
@@ -364,6 +375,19 @@ if (!class_exists('Mock_WPDB')) {
 				return $this->get_row_override;
 			}
 			return null;
+		}
+
+		public function get_results($query, $output = 'ARRAY_A') {
+			$this->queries[] = $query;
+			if ($this->get_results_override !== null) {
+				return $this->get_results_override;
+			}
+			return array();
+		}
+
+		public function get_col($query) {
+			$this->queries[] = $query;
+			return array();
 		}
 
 		public function insert($table, $data, $format = null) {
@@ -424,6 +448,38 @@ function filechi_create_test_provider($id = 1, $driver = 'sftp', $settings = arr
 		'settings'   => $settings,
 		'is_default' => (int) $is_default,
 	);
+}
+
+if (!class_exists('WP_REST_Server')) {
+	class WP_REST_Server {
+		const READABLE   = 'GET';
+		const CREATABLE  = 'POST';
+		const EDITABLE   = 'POST, PUT, PATCH';
+		const DELETABLE  = 'DELETE';
+		const ALLMETHODS = 'GET, POST, PUT, PATCH, DELETE';
+	}
+}
+
+if (!isset($GLOBALS['mock_rest_routes'])) {
+	$GLOBALS['mock_rest_routes'] = array();
+}
+
+if (!function_exists('register_rest_route')) {
+	function register_rest_route($namespace, $route, $args = array(), $override = false) {
+		$GLOBALS['mock_rest_routes'][] = array(
+			'namespace' => $namespace,
+			'route'     => $route,
+			'args'      => $args,
+			'override'  => $override,
+		);
+		return true;
+	}
+}
+
+if (!function_exists('rest_validate_request_arg')) {
+	function rest_validate_request_arg($value, $request, $param) {
+		return true;
+	}
 }
 
 if (!class_exists('WP_REST_Controller')) {

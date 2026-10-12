@@ -47,13 +47,27 @@ class FileChi_REST extends WP_REST_Controller {
 					'methods'             => WP_REST_Server::EDITABLE,
 					'callback'            => array($this, 'update_provider'),
 					'permission_callback' => array($this, 'check_admin_permissions'),
-					'args'                => array('id' => array('validate_callback' => 'is_numeric')),
+					'args'                => array(
+						'id' => array(
+							'type'              => 'integer',
+							'required'          => true,
+							'sanitize_callback' => 'absint',
+							'validate_callback' => 'rest_validate_request_arg',
+						),
+					),
 				),
 				array(
 					'methods'             => WP_REST_Server::DELETABLE,
 					'callback'            => array($this, 'delete_provider'),
 					'permission_callback' => array($this, 'check_admin_permissions'),
-					'args'                => array('id' => array('validate_callback' => 'is_numeric')),
+					'args'                => array(
+						'id' => array(
+							'type'              => 'integer',
+							'required'          => true,
+							'sanitize_callback' => 'absint',
+							'validate_callback' => 'rest_validate_request_arg',
+						),
+					),
 				),
 			)
 		);
@@ -65,7 +79,14 @@ class FileChi_REST extends WP_REST_Controller {
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array($this, 'set_default_provider'),
 				'permission_callback' => array($this, 'check_admin_permissions'),
-				'args'                => array('id' => array('validate_callback' => 'is_numeric')),
+				'args'                => array(
+					'id' => array(
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+				),
 			)
 		);
 
@@ -149,6 +170,16 @@ class FileChi_REST extends WP_REST_Controller {
 	public function get_providers($request) {
 		$providers = FileChi_DB::get_providers(false);
 		return rest_ensure_response($providers);
+	}
+
+	/**
+	 * Alias for get_providers.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public function list_providers($request) {
+		return $this->get_providers($request);
 	}
 
 	/**

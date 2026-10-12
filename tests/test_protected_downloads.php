@@ -1,5 +1,5 @@
 <?php
-// REAL
+// MOCK
 /**
  * Test: Protected WooCommerce Downloads & Streaming Proxy
  */

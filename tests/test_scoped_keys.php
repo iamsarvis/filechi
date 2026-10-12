@@ -1,5 +1,5 @@
 <?php
-// REAL
+// MOCK
 /**
  * Test: PublicKeyLoader::load() with RSA and Ed25519 keys using scoped phpseclib
  *
