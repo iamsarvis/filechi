@@ -172,6 +172,26 @@
 			setEditingProvider(Object.assign({}, editingProvider, { settings: s }));
 		}
 
+		// Handle Driver Switch (SFTP default 22, FTPS default 21)
+		function handleDriverChange(newDriver) {
+			const s = Object.assign({}, editingProvider.settings);
+			const currentPort = s.port;
+			const isPortEmpty = currentPort === '' || currentPort === null || currentPort === undefined;
+			const portNum = parseInt(currentPort, 10);
+
+			if (newDriver === 'ftps') {
+				if (isPortEmpty || portNum === 22) {
+					s.port = 21;
+				}
+			} else if (newDriver === 'sftp') {
+				if (isPortEmpty || portNum === 21) {
+					s.port = 22;
+				}
+			}
+
+			setEditingProvider(Object.assign({}, editingProvider, { driver: newDriver, settings: s }));
+		}
+
 		// Test Connection against unsaved form inputs
 		async function handleTestConnection() {
 			setIsTesting(true);
@@ -722,7 +742,7 @@
 							{ label: 'S3-Compatible Object Storage (AWS / ArvanCloud / ParsPack)', value: 's3' },
 							{ label: 'FTPS (FTP over Explicit TLS)', value: 'ftps' },
 						],
-						onChange: (val) => setEditingProvider(Object.assign({}, editingProvider, { driver: val })),
+						onChange: handleDriverChange,
 					}),
 
 					// Driver Specific Fields: S3
