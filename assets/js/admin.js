@@ -905,6 +905,11 @@
 
 					// Driver Specific Fields: FTPS
 					editingProvider.driver === 'ftps' && el('div', { style: { borderTop: '1px solid #e0e0e0', paddingTop: 16, marginTop: 16 } },
+						el(Notice, {
+							status: 'warning',
+							isDismissible: false,
+							style: { marginBottom: 15 },
+						}, "FTPS in this version encrypts the connection but does not verify the server's TLS certificate. Prefer SFTP or S3-compatible storage for sensitive data."),
 						el(TextControl, {
 							label: 'FTPS Host / IP',
 							value: s.host || '',
