@@ -164,12 +164,35 @@
 			} else if (preset === 'parspack') {
 				s.region = 'default';
 				s.path_style = 1;
+				if (s.endpoint === 'https://s3.ir-thr-at1.arvanstorage.ir' || s.endpoint === 'https://s3.us-east-1.amazonaws.com') {
+					s.endpoint = '';
+				}
 			} else if (preset === 'aws') {
 				s.endpoint = 'https://s3.us-east-1.amazonaws.com';
 				s.region = 'us-east-1';
 				s.path_style = 0;
 			}
 			setEditingProvider(Object.assign({}, editingProvider, { settings: s }));
+		}
+
+		// Handle Driver Switch (SFTP default 22, FTPS default 21)
+		function handleDriverChange(newDriver) {
+			const s = Object.assign({}, editingProvider.settings);
+			const currentPort = s.port;
+			const isPortEmpty = currentPort === '' || currentPort === null || currentPort === undefined;
+			const portNum = parseInt(currentPort, 10);
+
+			if (newDriver === 'ftps') {
+				if (isPortEmpty || portNum === 22) {
+					s.port = 21;
+				}
+			} else if (newDriver === 'sftp') {
+				if (isPortEmpty || portNum === 21) {
+					s.port = 22;
+				}
+			}
+
+			setEditingProvider(Object.assign({}, editingProvider, { driver: newDriver, settings: s }));
 		}
 
 		// Test Connection against unsaved form inputs
@@ -204,6 +227,14 @@
 			if (!editingProvider.name.trim()) {
 				alert('Please enter a name for this connection profile.');
 				return;
+			}
+
+			if (editingProvider.driver === 'sftp' || editingProvider.driver === 'ftps') {
+				const baseUrl = (editingProvider.settings && editingProvider.settings.base_url) ? String(editingProvider.settings.base_url).trim() : '';
+				if (!baseUrl) {
+					alert('Public URL Prefix is required for SFTP and FTPS connections.');
+					return;
+				}
 			}
 
 			setIsSaving(true);
@@ -309,12 +340,15 @@
 			{ name: 'migration_logs', title: 'Migration & Logs' },
 		];
 
+		const adminVersion = (window.filechiAdminData && window.filechiAdminData.version) ? window.filechiAdminData.version : '';
+		const versionLabel = adminVersion ? (adminVersion.startsWith('v') ? adminVersion : `v${adminVersion}`) : '';
+
 		return el('div', { className: 'filechi-app-container' },
 			// Header
 			el('div', { className: 'filechi-header' },
 				el('h1', null,
 					'FileChi',
-					el('span', { className: 'filechi-version' }, 'v1.0.0')
+					versionLabel ? el('span', { className: 'filechi-version' }, versionLabel) : null
 				),
 				el('div', null,
 					el(Button, {
@@ -461,6 +495,9 @@
 				el(TextControl, {
 					label: 'Migration Batch Size',
 					type: 'number',
+					min: 1,
+					max: 50,
+					step: 1,
 					help: 'Number of media files processed in each background Action Scheduler task (1 - 50).',
 					value: settings.migration_batch_size || 10,
 					onChange: (val) => setSettings(Object.assign({}, settings, { migration_batch_size: parseInt(val, 10) || 10 })),
@@ -473,7 +510,7 @@
 						checked: !!settings.delete_data_on_uninstall,
 						onChange: (val) => setSettings(Object.assign({}, settings, { delete_data_on_uninstall: val ? 1 : 0 })),
 					}),
-					settings.delete_data_on_uninstall && el(Notice, {
+					!!settings.delete_data_on_uninstall && el(Notice, {
 						status: 'warning',
 						isDismissible: false,
 						style: { margin: '10px 0 16px' }
@@ -492,26 +529,44 @@
 		function renderWooCommerceTab() {
 			if (!settings) return null;
 
+			const wc = (window.filechiAdminData && window.filechiAdminData.woocommerce) || { active: false, version: '', hpos_enabled: false };
+			const isWcActive = !!wc.active;
+
+			const wcBoxStyle = isWcActive ? {
+				display: 'flex',
+				alignItems: 'center',
+				gap: 12,
+				background: '#ecfdf5',
+				border: '1px solid #a7f3d0',
+				padding: '12px 16px',
+				borderRadius: 6,
+				marginBottom: 20,
+			} : {
+				display: 'flex',
+				alignItems: 'center',
+				gap: 12,
+				background: '#f6f7f7',
+				border: '1px solid #dcdcde',
+				padding: '12px 16px',
+				borderRadius: 6,
+				marginBottom: 20,
+			};
+
+			const wcIconClass = isWcActive ? 'dashicons dashicons-yes-alt' : 'dashicons dashicons-info';
+			const wcIconColor = isWcActive ? '#047857' : '#646970';
+			const wcTextColor = isWcActive ? '#047857' : '#50575e';
+			const wcText = isWcActive
+				? `WooCommerce ${wc.version ? wc.version + ' ' : ''}detected — HPOS ${wc.hpos_enabled ? 'enabled' : 'disabled'}. FileChi declares HPOS compatibility.`
+				: 'WooCommerce not detected.';
+
 			return el('div', { className: 'filechi-card' },
 				el('h3', { className: 'filechi-card-title' }, 'WooCommerce Offloading & HPOS Integration'),
 
-				el('div', {
-					style: {
-						display: 'flex',
-						alignItems: 'center',
-						gap: 12,
-						background: '#ecfdf5',
-						border: '1px solid #a7f3d0',
-						padding: '12px 16px',
-						borderRadius: 6,
-						marginBottom: 20,
-					},
-				},
-					el('span', { className: 'dashicons dashicons-yes-alt', style: { color: '#047857', fontSize: 22 } }),
+				el('div', { style: wcBoxStyle },
+					el('span', { className: wcIconClass, style: { color: wcIconColor, fontSize: 22 } }),
 					el('div', null,
-						el('strong', { style: { color: '#065f46' } }, 'High-Performance Order Storage (HPOS) Compatibility Declared'),
-						el('p', { style: { margin: 0, fontSize: 13, color: '#047857' } },
-							'FileChi officially declares and verifies compatibility with WooCommerce 10.x & 11.x custom order tables.'
+						el('p', { style: { margin: 0, fontSize: 13, color: wcTextColor, fontWeight: 500 } },
+							wcText
 						)
 					)
 				),
@@ -701,7 +756,7 @@
 				style: { maxWidth: 640 },
 			},
 				el('div', { style: { padding: '10px 0' } },
-					editingProvider && editingProvider.settings && editingProvider.settings._decryption_failed && el(Notice, {
+					!!(editingProvider && editingProvider.settings && editingProvider.settings._decryption_failed) && el(Notice, {
 						status: 'error',
 						isDismissible: false,
 						style: { marginBottom: 15 }
@@ -722,7 +777,7 @@
 							{ label: 'S3-Compatible Object Storage (AWS / ArvanCloud / ParsPack)', value: 's3' },
 							{ label: 'FTPS (FTP over Explicit TLS)', value: 'ftps' },
 						],
-						onChange: (val) => setEditingProvider(Object.assign({}, editingProvider, { driver: val })),
+						onChange: handleDriverChange,
 					}),
 
 					// Driver Specific Fields: S3
@@ -742,8 +797,10 @@
 							label: 'Endpoint URL',
 							value: s.endpoint || '',
 							onChange: (val) => updateSettingField('endpoint', val),
-							placeholder: 'https://s3.ir-thr-at1.arvanstorage.ir',
-							help: 'Full S3 REST API endpoint including https://',
+							placeholder: s.provider_type === 'parspack' ? 'https://...' : 'https://s3.ir-thr-at1.arvanstorage.ir',
+							help: s.provider_type === 'parspack'
+								? 'ParsPack does not publish a fixed endpoint. Copy the S3 endpoint from your ParsPack panel into the field above.'
+								: 'Full S3 REST API endpoint including https://',
 						}),
 						el(TextControl, {
 							label: 'Bucket Name',
@@ -851,6 +908,11 @@
 
 					// Driver Specific Fields: FTPS
 					editingProvider.driver === 'ftps' && el('div', { style: { borderTop: '1px solid #e0e0e0', paddingTop: 16, marginTop: 16 } },
+						el(Notice, {
+							status: 'warning',
+							isDismissible: false,
+							style: { marginBottom: 15 },
+						}, "FTPS in this version encrypts the connection but does not verify the server's TLS certificate. Prefer SFTP or S3-compatible storage for sensitive data."),
 						el(TextControl, {
 							label: 'FTPS Host / IP',
 							value: s.host || '',
@@ -897,11 +959,15 @@
 
 					// Common: Custom CDN / URL prefix
 					el(TextControl, {
-						label: 'Public URL Prefix / CDN Domain (optional)',
+						label: (editingProvider.driver === 'sftp' || editingProvider.driver === 'ftps')
+							? 'Public URL Prefix / CDN Domain (required)'
+							: 'Public URL Prefix / CDN Domain (optional)',
 						value: s.base_url || '',
 						onChange: (val) => updateSettingField('base_url', val),
 						placeholder: 'https://media.mysite.com',
-						help: 'Custom domain or CDN endpoint mapping to this storage location.',
+						help: (editingProvider.driver === 'sftp' || editingProvider.driver === 'ftps')
+							? 'Required: Public HTTP(S) URL prefix where files offloaded via SFTP/FTPS are accessible.'
+							: 'Custom domain or CDN endpoint mapping to this storage location.',
 					}),
 
 					// Test Result Notice

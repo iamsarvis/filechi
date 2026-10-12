@@ -125,9 +125,9 @@ $handlers = array(
 		$req->set_param('driver', 'sftp');
 		return $rest->create_provider($req);
 	},
-	'list_providers' => function() use ($rest) {
+	'get_providers' => function() use ($rest) {
 		$req = new WP_REST_Request('GET', '/filechi/v1/providers');
-		return $rest->list_providers($req);
+		return $rest->get_providers($req);
 	},
 );
 
