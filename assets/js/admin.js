@@ -340,12 +340,15 @@
 			{ name: 'migration_logs', title: 'Migration & Logs' },
 		];
 
+		const adminVersion = (window.filechiAdminData && window.filechiAdminData.version) ? window.filechiAdminData.version : '';
+		const versionLabel = adminVersion ? (adminVersion.startsWith('v') ? adminVersion : `v${adminVersion}`) : '';
+
 		return el('div', { className: 'filechi-app-container' },
 			// Header
 			el('div', { className: 'filechi-header' },
 				el('h1', null,
 					'FileChi',
-					el('span', { className: 'filechi-version' }, 'v1.0.0')
+					versionLabel ? el('span', { className: 'filechi-version' }, versionLabel) : null
 				),
 				el('div', null,
 					el(Button, {
