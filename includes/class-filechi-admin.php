@@ -81,30 +81,60 @@ class FileChi_Admin {
 		wp_localize_script(
 			'filechi-admin-js',
 			'filechiAdminData',
-			array(
-				'restUrl'                 => esc_url_raw(rest_url('filechi/v1')),
-				'nonce'                   => wp_create_nonce('wp_rest'),
-				'pluginUrl'               => FILECHI_URL,
-				'strings'                 => array(
-					'connections'        => __('Connections', 'filechi'),
-					'mediaRules'         => __('Media Rules', 'filechi'),
-					'woocommerce'        => __('WooCommerce', 'filechi'),
-					'migrationLogs'      => __('Migration & Logs', 'filechi'),
-					'addProvider'        => __('Add Connection Profile', 'filechi'),
-					'editProvider'       => __('Edit Connection Profile', 'filechi'),
-					'testConnection'     => __('Test Connection', 'filechi'),
-					'testing'            => __('Testing...', 'filechi'),
-					'save'               => __('Save Changes', 'filechi'),
-					'saving'             => __('Saving...', 'filechi'),
-					'delete'             => __('Delete', 'filechi'),
-					'setDefault'         => __('Set as Default', 'filechi'),
-					'defaultBadge'       => __('Active Default', 'filechi'),
-					'status'             => __('Status', 'filechi'),
-					'startMigration'     => __('Start Migration', 'filechi'),
-					'pauseMigration'     => __('Pause', 'filechi'),
-					'retryFailed'        => __('Retry Failed Items', 'filechi'),
-				),
-			)
+			$this->get_admin_data()
+		);
+	}
+
+	/**
+	 * Prepares localized data for the admin application.
+	 *
+	 * @return array
+	 */
+	public function get_admin_data() {
+		$wc_active = class_exists('WooCommerce');
+		$wc_version = '';
+		if ($wc_active) {
+			if (defined('WC_VERSION')) {
+				$wc_version = (string) WC_VERSION;
+			} elseif (function_exists('WC') && isset(WC()->version)) {
+				$wc_version = (string) WC()->version;
+			}
+		}
+
+		$wc_hpos_enabled = false;
+		if ($wc_active && class_exists('\Automattic\WooCommerce\Utilities\OrderUtil') && method_exists('\Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled')) {
+			$wc_hpos_enabled = (bool) \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+		}
+
+		return array(
+			'restUrl'       => esc_url_raw(rest_url('filechi/v1')),
+			'nonce'         => wp_create_nonce('wp_rest'),
+			'pluginUrl'     => FILECHI_URL,
+			'version'       => defined('FILECHI_VERSION') ? FILECHI_VERSION : '1.0.0',
+			'woocommerce'   => array(
+				'active'       => (bool) $wc_active,
+				'version'      => $wc_version,
+				'hpos_enabled' => (bool) $wc_hpos_enabled,
+			),
+			'strings'       => array(
+				'connections'    => __('Connections', 'filechi'),
+				'mediaRules'     => __('Media Rules', 'filechi'),
+				'woocommerce'    => __('WooCommerce', 'filechi'),
+				'migrationLogs'  => __('Migration & Logs', 'filechi'),
+				'addProvider'    => __('Add Connection Profile', 'filechi'),
+				'editProvider'   => __('Edit Connection Profile', 'filechi'),
+				'testConnection' => __('Test Connection', 'filechi'),
+				'testing'        => __('Testing...', 'filechi'),
+				'save'           => __('Save Changes', 'filechi'),
+				'saving'         => __('Saving...', 'filechi'),
+				'delete'         => __('Delete', 'filechi'),
+				'setDefault'     => __('Set as Default', 'filechi'),
+				'defaultBadge'   => __('Active Default', 'filechi'),
+				'status'         => __('Status', 'filechi'),
+				'startMigration' => __('Start Migration', 'filechi'),
+				'pauseMigration' => __('Pause', 'filechi'),
+				'retryFailed'    => __('Retry Failed Items', 'filechi'),
+			),
 		);
 	}
 

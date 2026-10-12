@@ -523,26 +523,44 @@
 		function renderWooCommerceTab() {
 			if (!settings) return null;
 
+			const wc = (window.filechiAdminData && window.filechiAdminData.woocommerce) || { active: false, version: '', hpos_enabled: false };
+			const isWcActive = !!wc.active;
+
+			const wcBoxStyle = isWcActive ? {
+				display: 'flex',
+				alignItems: 'center',
+				gap: 12,
+				background: '#ecfdf5',
+				border: '1px solid #a7f3d0',
+				padding: '12px 16px',
+				borderRadius: 6,
+				marginBottom: 20,
+			} : {
+				display: 'flex',
+				alignItems: 'center',
+				gap: 12,
+				background: '#f6f7f7',
+				border: '1px solid #dcdcde',
+				padding: '12px 16px',
+				borderRadius: 6,
+				marginBottom: 20,
+			};
+
+			const wcIconClass = isWcActive ? 'dashicons dashicons-yes-alt' : 'dashicons dashicons-info';
+			const wcIconColor = isWcActive ? '#047857' : '#646970';
+			const wcTextColor = isWcActive ? '#047857' : '#50575e';
+			const wcText = isWcActive
+				? `WooCommerce ${wc.version ? wc.version + ' ' : ''}detected — HPOS ${wc.hpos_enabled ? 'enabled' : 'disabled'}. FileChi declares HPOS compatibility.`
+				: 'WooCommerce not detected.';
+
 			return el('div', { className: 'filechi-card' },
 				el('h3', { className: 'filechi-card-title' }, 'WooCommerce Offloading & HPOS Integration'),
 
-				el('div', {
-					style: {
-						display: 'flex',
-						alignItems: 'center',
-						gap: 12,
-						background: '#ecfdf5',
-						border: '1px solid #a7f3d0',
-						padding: '12px 16px',
-						borderRadius: 6,
-						marginBottom: 20,
-					},
-				},
-					el('span', { className: 'dashicons dashicons-yes-alt', style: { color: '#047857', fontSize: 22 } }),
+				el('div', { style: wcBoxStyle },
+					el('span', { className: wcIconClass, style: { color: wcIconColor, fontSize: 22 } }),
 					el('div', null,
-						el('strong', { style: { color: '#065f46' } }, 'High-Performance Order Storage (HPOS) Compatibility Declared'),
-						el('p', { style: { margin: 0, fontSize: 13, color: '#047857' } },
-							'FileChi officially declares and verifies compatibility with WooCommerce 10.x & 11.x custom order tables.'
+						el('p', { style: { margin: 0, fontSize: 13, color: wcTextColor, fontWeight: 500 } },
+							wcText
 						)
 					)
 				),
