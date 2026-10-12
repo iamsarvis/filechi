@@ -510,7 +510,7 @@
 						checked: !!settings.delete_data_on_uninstall,
 						onChange: (val) => setSettings(Object.assign({}, settings, { delete_data_on_uninstall: val ? 1 : 0 })),
 					}),
-					settings.delete_data_on_uninstall && el(Notice, {
+					!!settings.delete_data_on_uninstall && el(Notice, {
 						status: 'warning',
 						isDismissible: false,
 						style: { margin: '10px 0 16px' }
@@ -756,7 +756,7 @@
 				style: { maxWidth: 640 },
 			},
 				el('div', { style: { padding: '10px 0' } },
-					editingProvider && editingProvider.settings && editingProvider.settings._decryption_failed && el(Notice, {
+					!!(editingProvider && editingProvider.settings && editingProvider.settings._decryption_failed) && el(Notice, {
 						status: 'error',
 						isDismissible: false,
 						style: { marginBottom: 15 }
