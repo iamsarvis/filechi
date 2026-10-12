@@ -226,6 +226,14 @@
 				return;
 			}
 
+			if (editingProvider.driver === 'sftp' || editingProvider.driver === 'ftps') {
+				const baseUrl = (editingProvider.settings && editingProvider.settings.base_url) ? String(editingProvider.settings.base_url).trim() : '';
+				if (!baseUrl) {
+					alert('Public URL Prefix is required for SFTP and FTPS connections.');
+					return;
+				}
+			}
+
 			setIsSaving(true);
 			try {
 				if (editingProvider.id) {
@@ -917,11 +925,15 @@
 
 					// Common: Custom CDN / URL prefix
 					el(TextControl, {
-						label: 'Public URL Prefix / CDN Domain (optional)',
+						label: (editingProvider.driver === 'sftp' || editingProvider.driver === 'ftps')
+							? 'Public URL Prefix / CDN Domain (required)'
+							: 'Public URL Prefix / CDN Domain (optional)',
 						value: s.base_url || '',
 						onChange: (val) => updateSettingField('base_url', val),
 						placeholder: 'https://media.mysite.com',
-						help: 'Custom domain or CDN endpoint mapping to this storage location.',
+						help: (editingProvider.driver === 'sftp' || editingProvider.driver === 'ftps')
+							? 'Required: Public HTTP(S) URL prefix where files offloaded via SFTP/FTPS are accessible.'
+							: 'Custom domain or CDN endpoint mapping to this storage location.',
 					}),
 
 					// Test Result Notice
