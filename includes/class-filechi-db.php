@@ -188,7 +188,14 @@ class FileChi_DB {
 			array('%s', '%s', '%d', '%s', '%s', '%s')
 		);
 
-		return $result ? $wpdb->insert_id : false;
+		if ($result) {
+			if (in_array($driver, array('sftp', 'ftps'), true) && !empty(trim((string) ($settings['protected_path'] ?? '')))) {
+				delete_option('filechi_protected_path_missing_notice');
+			}
+			return $wpdb->insert_id;
+		}
+
+		return false;
 	}
 
 	/**
@@ -286,7 +293,15 @@ class FileChi_DB {
 		$format[]             = '%s';
 
 		$res = $wpdb->update($table, $update, array('id' => $id), $format, array('%d'));
-		return $res !== false;
+		if ($res !== false) {
+			$driver = $update['driver'] ?? $existing_row['driver'];
+			$protected_path = isset($merged_settings['protected_path']) ? $merged_settings['protected_path'] : ($existing_settings['protected_path'] ?? '');
+			if (in_array($driver, array('sftp', 'ftps'), true) && !empty(trim((string) $protected_path))) {
+				delete_option('filechi_protected_path_missing_notice');
+			}
+			return true;
+		}
+		return false;
 	}
 
 	/**

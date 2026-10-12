@@ -169,8 +169,9 @@ class FileChi_Admin {
 		if ($notice) {
 			$provider_name = is_array($notice) ? ($notice['provider_name'] ?? 'SFTP/FTPS') : 'SFTP/FTPS';
 			$att_id        = is_array($notice) ? ($notice['attachment_id'] ?? 0) : 0;
+			$nonce         = wp_create_nonce('filechi_admin_nonce');
 			?>
-			<div class="notice notice-warning is-dismissible filechi-notice">
+			<div class="notice notice-warning is-dismissible filechi-notice" id="filechi-protected-notice">
 				<p>
 					<strong><?php esc_html_e('FileChi Security Notice:', 'filechi'); ?></strong>
 					<?php
@@ -182,6 +183,21 @@ class FileChi_Admin {
 					));
 					?>
 				</p>
+				<script>
+				(function() {
+					var notice = document.getElementById('filechi-protected-notice');
+					if (!notice) return;
+					notice.addEventListener('click', function(e) {
+						if (e.target && (e.target.classList.contains('notice-dismiss') || e.target.closest('.notice-dismiss'))) {
+							var url = typeof ajaxurl !== 'undefined' ? ajaxurl : '<?php echo esc_js(admin_url('admin-ajax.php')); ?>';
+							var xhr = new XMLHttpRequest();
+							xhr.open('POST', url, true);
+							xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+							xhr.send('action=filechi_dismiss_protected_notice&nonce=<?php echo esc_js($nonce); ?>');
+						}
+					});
+				})();
+				</script>
 			</div>
 			<?php
 		}
