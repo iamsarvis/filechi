@@ -131,3 +131,39 @@ The shipping plugin folder (`filechi/`) contains:
 - `languages/` — Translation template (`.pot`) and translations
 - `readme.txt` — WordPress plugin metadata and user documentation
 - `LICENSE` files for bundled libraries (`phpseclib`, `constant_time_encoding`, `action-scheduler`)
+
+---
+
+## 5. Plugin Data Inventory & Uninstall Cleanup Specifications
+
+FileChi stores all persistent data using WordPress core conventions with explicit namespacing. The data inventory and deletion behaviors are documented below:
+
+### 5.1 Custom Database Tables
+- `{$wpdb->prefix}filechi_providers`: Stores remote storage configurations (SFTP, FTPS, S3/ArvanCloud/ParsPack) with encrypted credentials.
+- `{$wpdb->prefix}filechi_logs`: Stores transfer/migration attempt rows and error reasons.
+
+### 5.2 WordPress Options
+- `filechi_settings`: Core configuration array (keep local, path format, batch size, etc.).
+- `filechi_db_version`: Installed schema version.
+- `filechi_migration_status`: Current state of migration (`running`, `paused`, `completed`, `given_up`, `stopped`).
+- `filechi_protected_path_missing_notice`: Warning notice data when SFTP/FTPS protected path is unconfigured.
+
+### 5.3 Transients & Lock Keys
+- `filechi_lock_{attachment_id}`: Per-attachment execution lock (stored in `wp_options` as `_transient_filechi_lock_*` and `_transient_timeout_filechi_lock_*`, 120s TTL). Cleaned up automatically on uninstall via `_transient_filechi_%` pattern.
+
+### 5.4 Attachment Post Meta (`wp_postmeta`)
+- `_filechi_offloaded`: Flag (`1`) indicating all files belonging to the attachment are satisfied on remote storage.
+- `_filechi_provider_id`: ID of the remote provider where files were transferred.
+- `_filechi_retry_scheduled`: Flag (`1`) indicating an Action Scheduler retry job is pending.
+- `_filechi_failure_count`: Integer counter tracking consecutive transfer failures for exponential backoff.
+- `_filechi_given_up`: Flag (`1`) indicating max retry limit (5) has been reached or file is unretryable.
+- `_filechi_last_error`: String recording the most recent specific failure reason.
+- `_filechi_unretryable`: Flag (`1`) set when file is missing both locally and remotely.
+
+### 5.5 Action Scheduler Scheduled Hooks
+- `filechi_process_migration_batch`: Group `filechi`.
+- `filechi_retry_attachment_offload`: Group `filechi`.
+
+### 5.6 Uninstall Policy
+- **Default (`delete_data_on_uninstall = 0`):** Safe uninstall. Cancels all pending Action Scheduler hooks, clears all `filechi_lock_*` transients. Preserves tables, options, and postmeta. Remote storage files are never touched.
+- **Opt-in (`delete_data_on_uninstall = 1`):** Complete cleanup. Drops custom tables, deletes all `filechi_%` options, drops all `_transient_filechi_%` transients, and removes all `_filechi_%` postmeta keys. Remote storage files are never touched.
