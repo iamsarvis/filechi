@@ -299,6 +299,51 @@ if (!function_exists('delete_option')) {
 	}
 }
 
+if (!function_exists('get_transient')) {
+	function get_transient($transient) {
+		$timeout_key = '_transient_timeout_' . $transient;
+		if (isset($GLOBALS['mock_options'][$timeout_key]) && $GLOBALS['mock_options'][$timeout_key] < time()) {
+			delete_transient($transient);
+			return false;
+		}
+		return $GLOBALS['mock_options']['_transient_' . $transient] ?? false;
+	}
+}
+
+if (!function_exists('set_transient')) {
+	function set_transient($transient, $value, $expiration = 0) {
+		$GLOBALS['mock_options']['_transient_' . $transient] = $value;
+		if ($expiration > 0) {
+			$GLOBALS['mock_options']['_transient_timeout_' . $transient] = time() + (int) $expiration;
+		}
+		return true;
+	}
+}
+
+if (!function_exists('delete_transient')) {
+	function delete_transient($transient) {
+		unset($GLOBALS['mock_options']['_transient_' . $transient]);
+		unset($GLOBALS['mock_options']['_transient_timeout_' . $transient]);
+		return true;
+	}
+}
+
+if (!function_exists('wp_generate_uuid4')) {
+	function wp_generate_uuid4() {
+		return sprintf(
+			'%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0x0fff) | 0x4000,
+			mt_rand(0, 0x3fff) | 0x8000,
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff)
+		);
+	}
+}
+
 if (!function_exists('add_option')) {
 	function add_option($option, $value, $deprecated = '', $autoload = 'yes') {
 		$GLOBALS['mock_options'][$option] = $value;

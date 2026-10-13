@@ -85,15 +85,22 @@ class FileChi_Media {
 			return false;
 		}
 
-		if ($provider === null) {
-			$provider = FileChi_DB::get_default_provider();
-		}
-		if (is_numeric($provider)) {
-			$provider = FileChi_DB::get_provider((int) $provider, true);
-		}
-		if (!$provider) {
+		$lock_token = self::acquire_lock($attachment_id);
+		if (!$lock_token) {
+			// Attachment is currently locked by another worker: skip
 			return false;
 		}
+
+		try {
+			if ($provider === null) {
+				$provider = FileChi_DB::get_default_provider();
+			}
+			if (is_numeric($provider)) {
+				$provider = FileChi_DB::get_provider((int) $provider, true);
+			}
+			if (!$provider) {
+				return false;
+			}
 
 		$provider_settings = is_array($provider['settings'] ?? null) ? $provider['settings'] : array();
 		if (!empty($provider_settings['_decryption_failed']) || !empty($provider['_decryption_failed'])) {
@@ -326,6 +333,58 @@ class FileChi_Media {
 
 		self::schedule_retry($attachment_id);
 		return false;
+		} finally {
+			self::release_lock($attachment_id, $lock_token);
+		}
+	}
+
+	/**
+	 * Acquires a unique per-attachment lock with a 120-second TTL.
+	 *
+	 * @param int $attachment_id Attachment post ID.
+	 * @return string|false Unique token if acquired, false if held.
+	 */
+	public static function acquire_lock($attachment_id) {
+		$lock_key = 'filechi_lock_' . absint($attachment_id);
+		$existing = get_transient($lock_key);
+		if (!empty($existing)) {
+			return false;
+		}
+
+		$token = function_exists('wp_generate_uuid4') ? wp_generate_uuid4() : uniqid('filechi_lock_', true);
+		if (empty($token)) {
+			$token = uniqid('filechi_lock_', true);
+		}
+
+		$set = set_transient($lock_key, $token, 120);
+		return $set ? $token : false;
+	}
+
+	/**
+	 * Releases the per-attachment lock only if the token matches.
+	 *
+	 * @param int    $attachment_id Attachment post ID.
+	 * @param string $token Unique lock token.
+	 * @return bool
+	 */
+	public static function release_lock($attachment_id, $token) {
+		$lock_key = 'filechi_lock_' . absint($attachment_id);
+		$current  = get_transient($lock_key);
+		if ($current === $token) {
+			return delete_transient($lock_key);
+		}
+		return false;
+	}
+
+	/**
+	 * Checks if an attachment is currently locked by a worker.
+	 *
+	 * @param int $attachment_id Attachment post ID.
+	 * @return bool
+	 */
+	public static function is_locked($attachment_id) {
+		$lock_key = 'filechi_lock_' . absint($attachment_id);
+		return !empty(get_transient($lock_key));
 	}
 
 	/**

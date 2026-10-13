@@ -94,6 +94,10 @@ class FileChi_Migration {
 
 		foreach ($unmigrated_ids as $attachment_id) {
 			$attachment_id = absint($attachment_id);
+			if (FileChi_Media::is_locked($attachment_id)) {
+				continue; // Skip locked attachment in this batch
+			}
+
 			$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
 
 			if (empty($attached_file)) {
