@@ -86,4 +86,12 @@ interface FileChi_Storage_Interface {
 	 * @return string Error message, or empty string if no error.
 	 */
 	public function get_last_error();
+
+	/**
+	 * Returns the size in bytes of a remote file, or -1 if not found or cannot be determined cheaply.
+	 *
+	 * @param string $remote_path Relative remote path/key.
+	 * @return int Size in bytes, or -1 on error/not found.
+	 */
+	public function get_size($remote_path);
 }

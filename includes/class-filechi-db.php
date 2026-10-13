@@ -535,9 +535,9 @@ class FileChi_DB {
 			"SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE meta_key = '_filechi_offloaded' AND meta_value = '1'"
 		);
 
-		// Total bytes transferred
+		// Total bytes transferred or reconciled
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$total_bytes = (double) $wpdb->get_var("SELECT SUM(file_size) FROM {$logs_table} WHERE status = 'transferred'");
+		$total_bytes = (double) $wpdb->get_var("SELECT SUM(file_size) FROM {$logs_table} WHERE status IN ('transferred', 'reconciled')");
 
 		// Failed count
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.

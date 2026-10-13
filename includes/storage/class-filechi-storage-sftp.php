@@ -352,4 +352,21 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	public function get_last_error() {
 		return $this->last_error;
 	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_size($remote_path) {
+		try {
+			$sftp             = $this->get_client();
+			$full_remote_path = $this->resolve_path($remote_path);
+			$size             = $sftp->filesize($full_remote_path);
+			if ($size === false) {
+				return -1;
+			}
+			return (int) $size;
+		} catch (\Exception $e) {
+			return -1;
+		}
+	}
 }

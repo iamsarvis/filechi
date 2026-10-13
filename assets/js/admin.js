@@ -673,6 +673,7 @@
 								options: [
 									{ label: 'All Statuses', value: '' },
 									{ label: 'Transferred', value: 'transferred' },
+									{ label: 'Reconciled', value: 'reconciled' },
 									{ label: 'Failed', value: 'failed' },
 									{ label: 'Pending', value: 'pending' },
 									{ label: 'Deleted', value: 'deleted' },

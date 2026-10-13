@@ -138,24 +138,26 @@ class FileChi_Media {
 		$dir_prefix = dirname($attached_file);
 		$dir_prefix = ($dir_prefix === '.' || $dir_prefix === '/') ? '' : $dir_prefix . '/';
 
-		// Collect all files to offload: relative_path => absolute_local_path
-		$files_to_offload = array();
+		// Collect all files that belong to this attachment: relative_path => array('abs_path' => ..., 'expected_size' => ...)
+		$files_to_process = array();
 
 		// 1. Main file
-		$main_local = $basedir . '/' . $attached_file;
-		if (file_exists($main_local)) {
-			$files_to_offload[$attached_file] = $main_local;
-		} else {
-			FileChi_DB::log_transfer($attachment_id, $provider['id'], $attached_file, 0, 'failed', __('Main local file not found on disk.', 'filechi'));
-			return false;
-		}
+		$main_local     = $basedir . '/' . $attached_file;
+		$main_size_meta = isset($metadata['filesize']) ? absint($metadata['filesize']) : 0;
+		$files_to_process[$attached_file] = array(
+			'abs_path'      => $main_local,
+			'expected_size' => $main_size_meta,
+		);
 
 		// 2. Scaled original image (WP 5.3+)
 		if (!empty($metadata['original_image'])) {
 			$orig_rel   = $dir_prefix . $metadata['original_image'];
 			$orig_local = $basedir . '/' . $orig_rel;
-			if (file_exists($orig_local)) {
-				$files_to_offload[$orig_rel] = $orig_local;
+			if (!isset($files_to_process[$orig_rel])) {
+				$files_to_process[$orig_rel] = array(
+					'abs_path'      => $orig_local,
+					'expected_size' => 0,
+				);
 			}
 		}
 
@@ -165,9 +167,11 @@ class FileChi_Media {
 				if (!empty($size_data['file'])) {
 					$size_rel   = $dir_prefix . $size_data['file'];
 					$size_local = $basedir . '/' . $size_rel;
-					if (file_exists($size_local)) {
-						$files_to_offload[$size_rel] = $size_local;
-					}
+					$size_meta  = isset($size_data['filesize']) ? absint($size_data['filesize']) : 0;
+					$files_to_process[$size_rel] = array(
+						'abs_path'      => $size_local,
+						'expected_size' => $size_meta,
+					);
 				}
 			}
 		}
@@ -179,8 +183,12 @@ class FileChi_Media {
 				if (!empty($backup['file'])) {
 					$bk_rel   = $dir_prefix . $backup['file'];
 					$bk_local = $basedir . '/' . $bk_rel;
-					if (file_exists($bk_local)) {
-						$files_to_offload[$bk_rel] = $bk_local;
+					$bk_size  = isset($backup['filesize']) ? absint($backup['filesize']) : 0;
+					if (!isset($files_to_process[$bk_rel])) {
+						$files_to_process[$bk_rel] = array(
+							'abs_path'      => $bk_local,
+							'expected_size' => $bk_size,
+						);
 					}
 				}
 			}
@@ -188,7 +196,7 @@ class FileChi_Media {
 
 		// Guard: If any file is protected and provider is SFTP/FTPS without protected_path, refuse offload
 		$has_protected = false;
-		foreach ($files_to_offload as $rel_path => $abs_path) {
+		foreach (array_keys($files_to_process) as $rel_path) {
 			if (self::is_protected_file($rel_path, $attachment_id)) {
 				$has_protected = true;
 				break;
@@ -217,25 +225,61 @@ class FileChi_Media {
 			}
 		}
 
-		// Phase 1: Upload and verify every file
+		// Phase 1: Reconcile or upload every file
 		$all_succeeded  = true;
+		$is_unretryable = false;
 		$uploaded_files = array();
 
-		foreach ($files_to_offload as $rel_path => $abs_path) {
-			$filesize = file_exists($abs_path) ? (int) filesize($abs_path) : 0;
-			$success  = $driver->upload($abs_path, $rel_path);
+		foreach ($files_to_process as $rel_path => $file_info) {
+			$abs_path      = $file_info['abs_path'];
+			$expected_size = $file_info['expected_size'];
+			$local_exists  = file_exists($abs_path);
 
-			if ($success) {
-				$uploaded_files[$rel_path] = $abs_path;
-				FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'transferred');
+			if ($local_exists) {
+				$filesize = (int) filesize($abs_path);
+				$success  = $driver->upload($abs_path, $rel_path);
+
+				if ($success) {
+					$uploaded_files[$rel_path] = $abs_path;
+					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'transferred');
+				} else {
+					$all_succeeded = false;
+					$reason        = (method_exists($driver, 'get_last_error') && $driver->get_last_error())
+						? $driver->get_last_error()
+						: __('Upload or verification failed for remote storage.', 'filechi');
+					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'failed', $reason);
+					update_post_meta($attachment_id, '_filechi_last_error', $reason);
+					break;
+				}
 			} else {
-				$all_succeeded = false;
-				$reason        = (method_exists($driver, 'get_last_error') && $driver->get_last_error())
-					? $driver->get_last_error()
-					: __('Upload or verification failed for remote storage.', 'filechi');
-				FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'failed', $reason);
-				update_post_meta($attachment_id, '_filechi_last_error', $reason);
-				break; // Stop immediately on any failure
+				// Local file missing: check remote copy
+				$remote_exists = $driver->exists($rel_path);
+				if ($remote_exists) {
+					$remote_size = method_exists($driver, 'get_size') ? $driver->get_size($rel_path) : -1;
+					if ($expected_size > 0 && $remote_size >= 0 && $remote_size !== $expected_size) {
+						$all_succeeded = false;
+						$reason        = sprintf(
+							'Remote size mismatch (expected: %d, actual: %d)',
+							$expected_size,
+							$remote_size
+						);
+						FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, max(0, $remote_size), 'failed', $reason);
+						update_post_meta($attachment_id, '_filechi_last_error', $reason);
+						break;
+					}
+
+					// Count file as satisfied and log reconciled
+					$logged_size = ($remote_size >= 0) ? $remote_size : $expected_size;
+					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $logged_size, 'reconciled');
+				} else {
+					// Missing locally AND remotely: real failure, no retries
+					$all_succeeded  = false;
+					$is_unretryable = true;
+					$reason         = sprintf('File not found locally or remotely: %s', $rel_path);
+					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, 0, 'failed', $reason);
+					update_post_meta($attachment_id, '_filechi_last_error', $reason);
+					break;
+				}
 			}
 		}
 
@@ -246,7 +290,7 @@ class FileChi_Media {
 			delete_post_meta($attachment_id, '_filechi_retry_scheduled');
 
 			if (!$keep_local) {
-				foreach ($files_to_offload as $abs_path) {
+				foreach ($uploaded_files as $abs_path) {
 					if (file_exists($abs_path)) {
 						@unlink($abs_path);
 					}
@@ -256,7 +300,13 @@ class FileChi_Media {
 			return true;
 		}
 
-		// Failure phase: delete nothing locally, do not set flag, schedule one retry
+		// Failure phase: if unretryable, do not schedule retry
+		if ($is_unretryable) {
+			update_post_meta($attachment_id, '_filechi_unretryable', 1);
+			delete_post_meta($attachment_id, '_filechi_retry_scheduled');
+			return false;
+		}
+
 		self::schedule_retry($attachment_id);
 		return false;
 	}

@@ -387,4 +387,18 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	public function get_last_error() {
 		return $this->last_error;
 	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_size($remote_path) {
+		try {
+			$conn             = $this->get_connection();
+			$full_remote_path = $this->resolve_path($remote_path);
+			$size             = @ftp_size($conn, $full_remote_path);
+			return ($size >= 0) ? (int) $size : -1;
+		} catch (\Exception $e) {
+			return -1;
+		}
+	}
 }

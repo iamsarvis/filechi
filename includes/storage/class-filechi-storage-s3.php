@@ -616,4 +616,26 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 	public function get_last_error() {
 		return $this->last_error;
 	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_size($remote_path) {
+		$response = $this->execute_request('HEAD', $remote_path);
+		if (is_wp_error($response)) {
+			return -1;
+		}
+
+		$code = wp_remote_retrieve_response_code($response);
+		if ($code !== 200) {
+			return -1;
+		}
+
+		$length = wp_remote_retrieve_header($response, 'content-length');
+		if ($length !== '' && is_numeric($length)) {
+			return (int) $length;
+		}
+
+		return 0;
+	}
 }
