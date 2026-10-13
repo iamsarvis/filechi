@@ -434,6 +434,41 @@ class FileChi_DB {
 	}
 
 	/**
+	 * Retrieves transfer log rows for an attachment and provider indexed by relative file path.
+	 *
+	 * @param int $attachment_id
+	 * @param int $provider_id
+	 * @return array<string, array> Keyed by file_path.
+	 */
+	public static function get_attachment_logs_by_file($attachment_id, $provider_id) {
+		global $wpdb;
+		$table = self::get_logs_table();
+		$attachment_id = absint($attachment_id);
+		$provider_id   = absint($provider_id);
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, file_path, file_size, status, error_message, attempts, updated_at FROM {$table} WHERE attachment_id = %d AND provider_id = %d",
+				$attachment_id,
+				$provider_id
+			),
+			ARRAY_A
+		);
+
+		if (!is_array($rows)) {
+			return array();
+		}
+
+		$by_file = array();
+		foreach ($rows as $row) {
+			$by_file[$row['file_path']] = $row;
+		}
+
+		return $by_file;
+	}
+
+	/**
 	 * Retrieves paginated transfer logs.
 	 *
 	 * @param array $args Query filters (status, limit, offset, search).

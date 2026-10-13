@@ -230,7 +230,24 @@ class FileChi_Media {
 		$is_unretryable = false;
 		$uploaded_files = array();
 
+		// Retrieve existing log entries for this attachment and provider
+		$existing_logs = method_exists('FileChi_DB', 'get_attachment_logs_by_file')
+			? FileChi_DB::get_attachment_logs_by_file($attachment_id, $provider['id'])
+			: array();
+
 		foreach ($files_to_process as $rel_path => $file_info) {
+			// Item 7.3: Do not redo finished work. Skip files whose log row for this provider
+			// is success/reconciled and whose remote copy still exists.
+			if (isset($existing_logs[$rel_path])) {
+				$prev_status = $existing_logs[$rel_path]['status'];
+				if ($prev_status === 'transferred' || $prev_status === 'reconciled') {
+					if (method_exists($driver, 'exists') && $driver->exists($rel_path)) {
+						// Already satisfied and remote copy confirmed: skip without re-uploading
+						continue;
+					}
+				}
+			}
+
 			$abs_path      = $file_info['abs_path'];
 			$expected_size = $file_info['expected_size'];
 			$local_exists  = file_exists($abs_path);
@@ -253,7 +270,7 @@ class FileChi_Media {
 				}
 			} else {
 				// Local file missing: check remote copy
-				$remote_exists = $driver->exists($rel_path);
+				$remote_exists = method_exists($driver, 'exists') ? $driver->exists($rel_path) : false;
 				if ($remote_exists) {
 					$remote_size = method_exists($driver, 'get_size') ? $driver->get_size($rel_path) : -1;
 					if ($expected_size > 0 && $remote_size >= 0 && $remote_size !== $expected_size) {
