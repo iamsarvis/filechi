@@ -21,6 +21,13 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 	private $settings;
 
 	/**
+	 * Most recent error message.
+	 *
+	 * @var string
+	 */
+	protected $last_error = '';
+
+	/**
 	 * Constructor.
 	 *
 	 * @param array $settings
@@ -256,12 +263,16 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 	 * {@inheritdoc}
 	 */
 	public function upload($local_file, $remote_path) {
+		$this->last_error = '';
+
 		if (!file_exists($local_file) || !is_readable($local_file)) {
+			$this->last_error = "Local file does not exist or is not readable: {$local_file}";
 			return false;
 		}
 
 		$body = file_get_contents($local_file);
 		if ($body === false) {
+			$this->last_error = "Failed to read local file contents: {$local_file}";
 			return false;
 		}
 
@@ -275,11 +286,29 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 
 		$response = $this->execute_request('PUT', $remote_path, $body, $headers);
 		if (is_wp_error($response)) {
+			$this->last_error = 'S3 request failed: ' . $response->get_error_message();
 			return false;
 		}
 
 		$code = wp_remote_retrieve_response_code($response);
 		if ($code < 200 || $code >= 300) {
+			$body_resp = wp_remote_retrieve_body($response);
+			$s3_code   = '';
+			$s3_msg    = '';
+			if (!empty($body_resp) && strpos($body_resp, '<Error>') !== false) {
+				if (preg_match('/<Code>(.*?)<\/Code>/i', $body_resp, $m)) {
+					$s3_code = trim($m[1]);
+				}
+				if (preg_match('/<Message>(.*?)<\/Message>/i', $body_resp, $m)) {
+					$s3_msg = trim($m[1]);
+				}
+			}
+			if (!empty($s3_code)) {
+				$this->last_error = "S3 error: {$s3_code} (HTTP {$code})" . ($s3_msg ? ": {$s3_msg}" : '');
+			} else {
+				$msg = wp_remote_retrieve_response_message($response);
+				$this->last_error = "S3 HTTP error {$code}" . ($msg ? ": {$msg}" : '');
+			}
 			return false;
 		}
 
@@ -287,13 +316,15 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 		$etag = wp_remote_retrieve_header($response, 'etag');
 		if (!empty($etag)) {
 			$expected_md5 = md5_file($local_file);
-			$clean_etag   = trim($etag, '" \t\n\r\0\x0B');
+			$clean_etag   = trim($etag, "\" \t\n\r\0\x0B");
 			// If not a multipart ETag (does not contain a hyphen), compare directly
 			if (strpos($clean_etag, '-') === false && strcasecmp($clean_etag, $expected_md5) !== 0) {
+				$this->last_error = "ETag mismatch (expected: {$expected_md5}, actual: {$clean_etag})";
 				return false;
 			}
 		} else {
 			if (!$this->exists($remote_path)) {
+				$this->last_error = 'Remote verification failed: object does not exist after upload';
 				return false;
 			}
 		}
@@ -577,5 +608,12 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 		}
 
 		return false;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_last_error() {
+		return $this->last_error;
 	}
 }

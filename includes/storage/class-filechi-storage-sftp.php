@@ -29,6 +29,13 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	private $client = null;
 
 	/**
+	 * Most recent error message.
+	 *
+	 * @var string
+	 */
+	protected $last_error = '';
+
+	/**
 	 * Constructor.
 	 *
 	 * @param array $settings
@@ -131,7 +138,10 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	 * {@inheritdoc}
 	 */
 	public function upload($local_file, $remote_path) {
+		$this->last_error = '';
+
 		if (!file_exists($local_file) || !is_readable($local_file)) {
+			$this->last_error = "Local file does not exist or is not readable: {$local_file}";
 			return false;
 		}
 
@@ -148,18 +158,21 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 			// Stream upload from local file without exhausting PHP memory
 			$uploaded = $sftp->put($full_remote_path, $local_file, SFTP::SOURCE_LOCAL_FILE);
 			if (!$uploaded) {
+				$this->last_error = "SFTP put failed for {$remote_path}";
 				return false;
 			}
 
 			// Verify upload cheaply by comparing remote file size
 			$remote_size = $sftp->filesize($full_remote_path);
-			$local_size  = filesize($local_file);
+			$local_size  = file_exists($local_file) ? (int) filesize($local_file) : 0;
 			if ($remote_size !== false && $remote_size !== $local_size) {
+				$this->last_error = "Remote size mismatch (expected: {$local_size}, actual: {$remote_size})";
 				return false;
 			}
 
 			return true;
 		} catch (\Exception $e) {
+			$this->last_error = 'SFTP upload error: ' . $e->getMessage();
 			return false;
 		}
 	}
@@ -331,5 +344,12 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 		} catch (\Exception $e) {
 			return false;
 		}
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_last_error() {
+		return $this->last_error;
 	}
 }

@@ -204,11 +204,12 @@ class FileChi_Media {
 					'provider_name' => $provider['name'] ?? $provider_driver,
 					'time'          => time(),
 				));
+				$main_size = file_exists($main_local) ? (int) filesize($main_local) : 0;
 				FileChi_DB::log_transfer(
 					$attachment_id,
 					$provider['id'],
 					$attached_file,
-					filesize($main_local),
+					$main_size,
 					'failed',
 					__('Protected WooCommerce file cannot be offloaded: SFTP/FTPS provider has no protected_path configured.', 'filechi')
 				);
@@ -221,7 +222,7 @@ class FileChi_Media {
 		$uploaded_files = array();
 
 		foreach ($files_to_offload as $rel_path => $abs_path) {
-			$filesize = filesize($abs_path);
+			$filesize = file_exists($abs_path) ? (int) filesize($abs_path) : 0;
 			$success  = $driver->upload($abs_path, $rel_path);
 
 			if ($success) {
@@ -229,7 +230,11 @@ class FileChi_Media {
 				FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'transferred');
 			} else {
 				$all_succeeded = false;
-				FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'failed', __('Upload or verification failed for remote storage.', 'filechi'));
+				$reason        = (method_exists($driver, 'get_last_error') && $driver->get_last_error())
+					? $driver->get_last_error()
+					: __('Upload or verification failed for remote storage.', 'filechi');
+				FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'failed', $reason);
+				update_post_meta($attachment_id, '_filechi_last_error', $reason);
 				break; // Stop immediately on any failure
 			}
 		}
