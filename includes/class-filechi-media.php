@@ -312,6 +312,10 @@ class FileChi_Media {
 			update_post_meta($attachment_id, '_filechi_offloaded', 1);
 			update_post_meta($attachment_id, '_filechi_provider_id', $provider['id']);
 			delete_post_meta($attachment_id, '_filechi_retry_scheduled');
+			delete_post_meta($attachment_id, '_filechi_failure_count');
+			delete_post_meta($attachment_id, '_filechi_given_up');
+			delete_post_meta($attachment_id, '_filechi_last_error');
+			delete_post_meta($attachment_id, '_filechi_unretryable');
 
 			if (!$keep_local) {
 				foreach ($uploaded_files as $abs_path) {
@@ -324,14 +328,8 @@ class FileChi_Media {
 			return true;
 		}
 
-		// Failure phase: if unretryable, do not schedule retry
-		if ($is_unretryable) {
-			update_post_meta($attachment_id, '_filechi_unretryable', 1);
-			delete_post_meta($attachment_id, '_filechi_retry_scheduled');
-			return false;
-		}
-
-		self::schedule_retry($attachment_id);
+		// Failure phase: handle failure count, give-up limits, and exponential backoff retry
+		self::handle_offload_failure($attachment_id, $is_unretryable);
 		return false;
 		} finally {
 			self::release_lock($attachment_id, $lock_token);
@@ -388,18 +386,47 @@ class FileChi_Media {
 	}
 
 	/**
-	 * Schedules a single retry action via Action Scheduler.
+	 * Handles failure tracking, give-up limits (at 5 failures or unretryable),
+	 * and exponential backoff retry scheduling.
+	 *
+	 * @param int  $attachment_id
+	 * @param bool $is_unretryable
+	 */
+	public static function handle_offload_failure($attachment_id, $is_unretryable = false) {
+		$failures = (int) get_post_meta($attachment_id, '_filechi_failure_count', true) + 1;
+		update_post_meta($attachment_id, '_filechi_failure_count', $failures);
+
+		if ($is_unretryable || $failures >= 5) {
+			// At 5 failures or unretryable, set given_up and do not retry
+			update_post_meta($attachment_id, '_filechi_given_up', 1);
+			delete_post_meta($attachment_id, '_filechi_retry_scheduled');
+			if (function_exists('as_unschedule_action')) {
+				as_unschedule_action('filechi_retry_attachment_offload', array('attachment_id' => $attachment_id), 'filechi');
+			}
+			return;
+		}
+
+		// Schedule retry later with exponential backoff: 60s * 2^(failures - 1), capped at 30 minutes (1800s)
+		$delay = min(1800, 60 * (int) pow(2, max(0, $failures - 1)));
+		self::schedule_retry($attachment_id, $delay);
+	}
+
+	/**
+	 * Schedules a single retry action via Action Scheduler with backoff delay.
 	 *
 	 * @param int $attachment_id
+	 * @param int $delay Delay in seconds from current time (default 60s).
 	 */
-	public static function schedule_retry($attachment_id) {
-		if (get_post_meta($attachment_id, '_filechi_retry_scheduled', true)) {
-			return; // Only schedule one automatic retry
+	public static function schedule_retry($attachment_id, $delay = 60) {
+		if (function_exists('as_unschedule_action')) {
+			as_unschedule_action('filechi_retry_attachment_offload', array('attachment_id' => $attachment_id), 'filechi');
 		}
 
 		update_post_meta($attachment_id, '_filechi_retry_scheduled', 1);
 
-		as_schedule_single_action(time() + 60, 'filechi_retry_attachment_offload', array('attachment_id' => $attachment_id), 'filechi');
+		if (function_exists('as_schedule_single_action')) {
+			as_schedule_single_action(time() + $delay, 'filechi_retry_attachment_offload', array('attachment_id' => $attachment_id), 'filechi');
+		}
 	}
 
 	/**
