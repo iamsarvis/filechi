@@ -601,6 +601,9 @@
 			if (!stats) return null;
 
 			const percent = stats.total > 0 ? Math.round((stats.offloaded / stats.total) * 100) : 100;
+			const failedCount = stats.failed || 0;
+			const givenUpCount = stats.given_up || 0;
+			const hasAttention = failedCount > 0 || givenUpCount > 0;
 
 			return el('div', null,
 				// Migration Dashboard Card
@@ -620,13 +623,16 @@
 							el('div', { className: 'filechi-stat-value', style: { color: '#b45309' } }, stats.remaining),
 							el('div', { className: 'filechi-stat-label' }, 'Remaining to Offload')
 						),
-						el('div', { className: 'filechi-stat-card' },
-							el('div', { className: 'filechi-stat-value', style: { color: '#b91c1c' } }, stats.failed),
-							el('div', { className: 'filechi-stat-label' }, 'Failed Transfers')
-						),
-						el('div', { className: 'filechi-stat-card' },
-							el('div', { className: 'filechi-stat-value', style: { color: '#7c3aed' } }, stats.given_up || 0),
-							el('div', { className: 'filechi-stat-label' }, 'Given Up')
+						el('div', { className: `filechi-stat-card${hasAttention ? ' has-attention' : ''}` },
+							el('div', {
+								className: 'filechi-stat-value',
+								style: hasAttention ? { color: '#b91c1c' } : undefined,
+							}, failedCount),
+							el('div', { className: 'filechi-stat-label' }, 'Needs Attention'),
+							el('div', {
+								className: 'filechi-stat-sublabel',
+								style: hasAttention ? { color: '#b91c1c' } : undefined,
+							}, `${givenUpCount} given up`)
 						),
 						el('div', { className: 'filechi-stat-card' },
 							el('div', { className: 'filechi-stat-value' }, formatBytes(stats.total_bytes)),
