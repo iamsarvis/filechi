@@ -27,6 +27,13 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	private $connection = null;
 
 	/**
+	 * Most recent error message.
+	 *
+	 * @var string
+	 */
+	protected $last_error = '';
+
+	/**
 	 * Constructor.
 	 *
 	 * @param array $settings
@@ -164,7 +171,10 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	 * {@inheritdoc}
 	 */
 	public function upload($local_file, $remote_path) {
+		$this->last_error = '';
+
 		if (!file_exists($local_file) || !is_readable($local_file)) {
+			$this->last_error = "Local file does not exist or is not readable: {$local_file}";
 			return false;
 		}
 
@@ -177,18 +187,21 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 
 			$uploaded = @ftp_put($conn, $full_remote_path, $local_file, FTP_BINARY);
 			if (!$uploaded) {
+				$this->last_error = "FTPS put failed for {$remote_path}";
 				return false;
 			}
 
 			// Verify upload cheaply by comparing remote file size
 			$remote_size = @ftp_size($conn, $full_remote_path);
-			$local_size  = filesize($local_file);
+			$local_size  = (int) filesize($local_file);
 			if ($remote_size >= 0 && $remote_size !== $local_size) {
+				$this->last_error = "Remote size mismatch (expected: {$local_size}, actual: {$remote_size})";
 				return false;
 			}
 
 			return true;
 		} catch (\Exception $e) {
+			$this->last_error = 'FTPS upload error: ' . $e->getMessage();
 			return false;
 		}
 	}
@@ -365,6 +378,27 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			return $result;
 		} catch (\Exception $e) {
 			return false;
+		}
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_last_error() {
+		return $this->last_error;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_size($remote_path) {
+		try {
+			$conn             = $this->get_connection();
+			$full_remote_path = $this->resolve_path($remote_path);
+			$size             = @ftp_size($conn, $full_remote_path);
+			return ($size >= 0) ? (int) $size : -1;
+		} catch (\Exception $e) {
+			return -1;
 		}
 	}
 }

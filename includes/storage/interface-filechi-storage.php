@@ -79,4 +79,19 @@ interface FileChi_Storage_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function stream_to_output($remote_path, $chunk_size = 1048576);
+
+	/**
+	 * Returns the most recent error message or failure reason from a storage operation.
+	 *
+	 * @return string Error message, or empty string if no error.
+	 */
+	public function get_last_error();
+
+	/**
+	 * Returns the size in bytes of a remote file, or -1 if not found or cannot be determined cheaply.
+	 *
+	 * @param string $remote_path Relative remote path/key.
+	 * @return int Size in bytes, or -1 on error/not found.
+	 */
+	public function get_size($remote_path);
 }

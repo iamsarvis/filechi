@@ -434,6 +434,41 @@ class FileChi_DB {
 	}
 
 	/**
+	 * Retrieves transfer log rows for an attachment and provider indexed by relative file path.
+	 *
+	 * @param int $attachment_id
+	 * @param int $provider_id
+	 * @return array<string, array> Keyed by file_path.
+	 */
+	public static function get_attachment_logs_by_file($attachment_id, $provider_id) {
+		global $wpdb;
+		$table = self::get_logs_table();
+		$attachment_id = absint($attachment_id);
+		$provider_id   = absint($provider_id);
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, file_path, file_size, status, error_message, attempts, updated_at FROM {$table} WHERE attachment_id = %d AND provider_id = %d",
+				$attachment_id,
+				$provider_id
+			),
+			ARRAY_A
+		);
+
+		if (!is_array($rows)) {
+			return array();
+		}
+
+		$by_file = array();
+		foreach ($rows as $row) {
+			$by_file[$row['file_path']] = $row;
+		}
+
+		return $by_file;
+	}
+
+	/**
 	 * Retrieves paginated transfer logs.
 	 *
 	 * @param array $args Query filters (status, limit, offset, search).
@@ -505,14 +540,28 @@ class FileChi_DB {
 		return $wpdb->get_col(
 			$wpdb->prepare(
 				"SELECT p.ID FROM {$wpdb->posts} p
-				 LEFT JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id AND pm.meta_key = '_filechi_offloaded')
+				 LEFT JOIN {$wpdb->postmeta} pm_off ON (p.ID = pm_off.post_id AND pm_off.meta_key = '_filechi_offloaded')
+				 LEFT JOIN {$wpdb->postmeta} pm_give ON (p.ID = pm_give.post_id AND pm_give.meta_key = '_filechi_given_up')
 				 WHERE p.post_type = 'attachment'
 				   AND p.post_status = 'inherit'
-				   AND pm.meta_value IS NULL
+				   AND pm_off.meta_value IS NULL
+				   AND pm_give.meta_value IS NULL
 				 ORDER BY p.ID DESC
 				 LIMIT %d",
 				$limit
 			)
+		);
+	}
+
+	/**
+	 * Returns total count of attachments that have reached the maximum retry limit and given up.
+	 *
+	 * @return int
+	 */
+	public static function get_given_up_attachment_count() {
+		global $wpdb;
+		return (int) $wpdb->get_var(
+			"SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE meta_key = '_filechi_given_up' AND meta_value = '1'"
 		);
 	}
 
@@ -535,19 +584,23 @@ class FileChi_DB {
 			"SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE meta_key = '_filechi_offloaded' AND meta_value = '1'"
 		);
 
-		// Total bytes transferred
+		// Total bytes transferred or reconciled
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$total_bytes = (double) $wpdb->get_var("SELECT SUM(file_size) FROM {$logs_table} WHERE status = 'transferred'");
+		$total_bytes = (double) $wpdb->get_var("SELECT SUM(file_size) FROM {$logs_table} WHERE status IN ('transferred', 'reconciled')");
 
 		// Failed count
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		$failed_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$logs_table} WHERE status = 'failed'");
 
+		// Given-up attachments count
+		$given_up_count = self::get_given_up_attachment_count();
+
 		return array(
 			'total'       => $total_attachments,
 			'offloaded'   => $offloaded_attachments,
-			'remaining'   => max(0, $total_attachments - $offloaded_attachments),
+			'remaining'   => max(0, $total_attachments - $offloaded_attachments - $given_up_count),
 			'failed'      => $failed_count,
+			'given_up'    => $given_up_count,
 			'total_bytes' => $total_bytes,
 		);
 	}
@@ -563,6 +616,25 @@ class FileChi_DB {
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		return (int) $wpdb->query("UPDATE {$table} SET status = 'pending', error_message = NULL WHERE status = 'failed'");
+	}
+
+	/**
+	 * Resets failure counters, error details, and given-up flags on all attachments.
+	 *
+	 * @return int Number of affected postmeta rows.
+	 */
+	public static function reset_failed_attachments() {
+		global $wpdb;
+		$keys = array('_filechi_given_up', '_filechi_failure_count', '_filechi_last_error', '_filechi_retry_scheduled', '_filechi_unretryable');
+		$placeholders = implode(',', array_fill(0, count($keys), '%s'));
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe placeholders interpolation.
+		return (int) $wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->postmeta} WHERE meta_key IN ({$placeholders})",
+				$keys
+			)
+		);
 	}
 
 	/**

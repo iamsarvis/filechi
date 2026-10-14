@@ -29,6 +29,9 @@ if (!class_exists('FileChi_DB')) {
 		public static function log_transfer($attachment_id, $provider_id, $file_path, $file_size, $status, $error_message = null) {
 			// Mock log
 		}
+		public static function get_attachment_logs_by_file($attachment_id, $provider_id) {
+			return array();
+		}
 	}
 }
 
@@ -42,6 +45,18 @@ class Mock_Storage_Driver {
 			return false;
 		}
 		return true;
+	}
+
+	public function exists($remote_path) {
+		return false;
+	}
+
+	public function get_last_error() {
+		return null;
+	}
+
+	public function get_size($remote_path) {
+		return -1;
 	}
 }
 

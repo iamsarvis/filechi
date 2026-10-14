@@ -299,6 +299,51 @@ if (!function_exists('delete_option')) {
 	}
 }
 
+if (!function_exists('get_transient')) {
+	function get_transient($transient) {
+		$timeout_key = '_transient_timeout_' . $transient;
+		if (isset($GLOBALS['mock_options'][$timeout_key]) && $GLOBALS['mock_options'][$timeout_key] < time()) {
+			delete_transient($transient);
+			return false;
+		}
+		return $GLOBALS['mock_options']['_transient_' . $transient] ?? false;
+	}
+}
+
+if (!function_exists('set_transient')) {
+	function set_transient($transient, $value, $expiration = 0) {
+		$GLOBALS['mock_options']['_transient_' . $transient] = $value;
+		if ($expiration > 0) {
+			$GLOBALS['mock_options']['_transient_timeout_' . $transient] = time() + (int) $expiration;
+		}
+		return true;
+	}
+}
+
+if (!function_exists('delete_transient')) {
+	function delete_transient($transient) {
+		unset($GLOBALS['mock_options']['_transient_' . $transient]);
+		unset($GLOBALS['mock_options']['_transient_timeout_' . $transient]);
+		return true;
+	}
+}
+
+if (!function_exists('wp_generate_uuid4')) {
+	function wp_generate_uuid4() {
+		return sprintf(
+			'%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0x0fff) | 0x4000,
+			mt_rand(0, 0x3fff) | 0x8000,
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff),
+			mt_rand(0, 0xffff)
+		);
+	}
+}
+
 if (!function_exists('add_option')) {
 	function add_option($option, $value, $deprecated = '', $autoload = 'yes') {
 		$GLOBALS['mock_options'][$option] = $value;
@@ -332,6 +377,19 @@ if (!function_exists('delete_post_meta')) {
 	}
 }
 
+if (!function_exists('wp_get_attachment_metadata')) {
+	function wp_get_attachment_metadata($attachment_id, $unfiltered = false) {
+		return $GLOBALS['mock_post_meta'][$attachment_id]['_wp_attachment_metadata'] ?? array();
+	}
+}
+
+if (!function_exists('wp_update_attachment_metadata')) {
+	function wp_update_attachment_metadata($attachment_id, $data) {
+		$GLOBALS['mock_post_meta'][$attachment_id]['_wp_attachment_metadata'] = $data;
+		return true;
+	}
+}
+
 if (!function_exists('as_schedule_single_action')) {
 	function as_schedule_single_action($time, $hook, $args = array(), $group = '') {
 		$GLOBALS['mock_scheduled_actions'][] = compact('time', 'hook', 'args', 'group');
@@ -347,6 +405,12 @@ if (!function_exists('as_has_scheduled_action')) {
 
 if (!function_exists('as_unschedule_all_actions')) {
 	function as_unschedule_all_actions($hook, $args = array(), $group = '') {
+		$GLOBALS['mock_unscheduled_actions'][] = compact('hook', 'args', 'group');
+	}
+}
+
+if (!function_exists('as_unschedule_action')) {
+	function as_unschedule_action($hook, $args = array(), $group = '') {
 		$GLOBALS['mock_unscheduled_actions'][] = compact('hook', 'args', 'group');
 	}
 }
@@ -430,6 +494,17 @@ if (!class_exists('Mock_WPDB')) {
 
 		public function query($sql) {
 			$this->queries[] = $sql;
+			if (strpos($sql, 'DELETE FROM') !== false && strpos($sql, $this->postmeta) !== false) {
+				if (preg_match_all("/'(_filechi_[^']+)'/", $sql, $matches)) {
+					foreach ($matches[1] as $meta_key) {
+						if (isset($GLOBALS['mock_post_meta']) && is_array($GLOBALS['mock_post_meta'])) {
+							foreach ($GLOBALS['mock_post_meta'] as $pid => $meta_arr) {
+								unset($GLOBALS['mock_post_meta'][$pid][$meta_key]);
+							}
+						}
+					}
+				}
+			}
 			return true;
 		}
 
@@ -456,6 +531,9 @@ if (!class_exists('Mock_WPDB')) {
 		public function get_results($query, $output = 'ARRAY_A') {
 			$this->queries[] = $query;
 			if ($this->get_results_override !== null) {
+				if (is_callable($this->get_results_override)) {
+					return call_user_func($this->get_results_override, $query, $output);
+				}
 				return $this->get_results_override;
 			}
 			return array();

@@ -625,6 +625,10 @@
 							el('div', { className: 'filechi-stat-label' }, 'Failed Transfers')
 						),
 						el('div', { className: 'filechi-stat-card' },
+							el('div', { className: 'filechi-stat-value', style: { color: '#7c3aed' } }, stats.given_up || 0),
+							el('div', { className: 'filechi-stat-label' }, 'Given Up')
+						),
+						el('div', { className: 'filechi-stat-card' },
 							el('div', { className: 'filechi-stat-value' }, formatBytes(stats.total_bytes)),
 							el('div', { className: 'filechi-stat-label' }, 'Remote Space Used')
 						)
@@ -656,7 +660,7 @@
 							onClick: () => handleMigrationAction('pause'),
 						}, 'Pause Migration'),
 
-						stats.failed > 0 && el(Button, {
+						(stats.failed > 0 || (stats.given_up && stats.given_up > 0)) && el(Button, {
 							variant: 'secondary',
 							onClick: () => handleMigrationAction('retry'),
 						}, 'Retry Failed Items')
@@ -673,6 +677,7 @@
 								options: [
 									{ label: 'All Statuses', value: '' },
 									{ label: 'Transferred', value: 'transferred' },
+									{ label: 'Reconciled', value: 'reconciled' },
 									{ label: 'Failed', value: 'failed' },
 									{ label: 'Pending', value: 'pending' },
 									{ label: 'Deleted', value: 'deleted' },

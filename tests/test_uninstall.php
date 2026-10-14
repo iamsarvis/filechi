@@ -82,6 +82,10 @@ $deleted_postmeta = array_filter($wpdb->queries, function($q) {
 echo 'Postmeta deleted: ' . (count($deleted_postmeta) > 0 ? 'PASS' : 'FAIL') . "\n";
 assert(count($deleted_postmeta) > 0);
 
+// Verify that the postmeta cleanup pattern deletes all _filechi_ keys including failure and lock keys
+$meta_sql = end($deleted_postmeta);
+assert(stripos(stripslashes($meta_sql), '_filechi_') !== false, 'Postmeta cleanup must target _filechi_% pattern');
+
 echo "\n=== 3. Deactivation Hook Clears Jobs Without Data Deletion ===\n";
 $GLOBALS['mock_scheduled_hooks_cleared'] = array();
 $GLOBALS['mock_unscheduled_actions']     = array();
