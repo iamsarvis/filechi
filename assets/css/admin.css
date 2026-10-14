@@ -166,17 +166,23 @@
 /* Migration & Stats */
 .filechi-stats-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 	gap: 16px;
 	margin-bottom: 24px;
+	align-items: stretch;
 }
 
 .filechi-stat-card {
 	background: #f6f7f7;
 	border: 1px solid #c3c4c7;
 	border-radius: 6px;
-	padding: 16px;
+	padding: 16px 12px;
 	text-align: center;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	box-sizing: border-box;
 }
 
 .filechi-stat-value {
@@ -192,6 +198,30 @@
 	text-transform: uppercase;
 	letter-spacing: 0.5px;
 	margin-top: 6px;
+}
+
+.filechi-stat-sublabel {
+	font-size: 11px;
+	color: #646970;
+	margin-top: 4px;
+	line-height: 1.2;
+}
+
+.filechi-stat-card.has-attention .filechi-stat-value,
+.filechi-stat-card.has-attention .filechi-stat-sublabel {
+	color: #b91c1c;
+}
+
+@media (max-width: 860px) {
+	.filechi-stats-grid {
+		grid-template-columns: repeat(2, 1fr);
+	}
+}
+
+@media (max-width: 480px) {
+	.filechi-stats-grid {
+		grid-template-columns: 1fr;
+	}
 }
 
 /* Progress bar */
