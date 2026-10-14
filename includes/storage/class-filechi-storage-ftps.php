@@ -193,7 +193,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 
 			// Verify upload cheaply by comparing remote file size
 			$remote_size = @ftp_size($conn, $full_remote_path);
-			$local_size  = file_exists($local_file) ? (int) filesize($local_file) : 0;
+			$local_size  = (int) filesize($local_file);
 			if ($remote_size >= 0 && $remote_size !== $local_size) {
 				$this->last_error = "Remote size mismatch (expected: {$local_size}, actual: {$remote_size})";
 				return false;

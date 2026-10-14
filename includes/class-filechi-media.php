@@ -238,9 +238,7 @@ class FileChi_Media {
 		$uploaded_files = array();
 
 		// Retrieve existing log entries for this attachment and provider
-		$existing_logs = method_exists('FileChi_DB', 'get_attachment_logs_by_file')
-			? FileChi_DB::get_attachment_logs_by_file($attachment_id, $provider['id'])
-			: array();
+		$existing_logs = FileChi_DB::get_attachment_logs_by_file($attachment_id, $provider['id']);
 
 		foreach ($files_to_process as $rel_path => $file_info) {
 			// Item 7.3: Do not redo finished work. Skip files whose log row for this provider
@@ -248,7 +246,7 @@ class FileChi_Media {
 			if (isset($existing_logs[$rel_path])) {
 				$prev_status = $existing_logs[$rel_path]['status'];
 				if ($prev_status === 'transferred' || $prev_status === 'reconciled') {
-					if (method_exists($driver, 'exists') && $driver->exists($rel_path)) {
+					if ($driver->exists($rel_path)) {
 						// Already satisfied and remote copy confirmed: skip without re-uploading
 						continue;
 					}
@@ -268,18 +266,19 @@ class FileChi_Media {
 					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'transferred');
 				} else {
 					$all_succeeded = false;
-					$reason        = (method_exists($driver, 'get_last_error') && $driver->get_last_error())
-						? $driver->get_last_error()
-						: __('Upload or verification failed for remote storage.', 'filechi');
+					$reason        = $driver->get_last_error();
+					if (empty($reason)) {
+						$reason = __('Upload or verification failed for remote storage.', 'filechi');
+					}
 					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'failed', $reason);
 					update_post_meta($attachment_id, '_filechi_last_error', $reason);
 					break;
 				}
 			} else {
 				// Local file missing: check remote copy
-				$remote_exists = method_exists($driver, 'exists') ? $driver->exists($rel_path) : false;
+				$remote_exists = $driver->exists($rel_path);
 				if ($remote_exists) {
-					$remote_size = method_exists($driver, 'get_size') ? $driver->get_size($rel_path) : -1;
+					$remote_size = $driver->get_size($rel_path);
 					if ($expected_size > 0 && $remote_size >= 0 && $remote_size !== $expected_size) {
 						$all_succeeded = false;
 						$reason        = sprintf(
@@ -350,11 +349,7 @@ class FileChi_Media {
 		}
 
 		$token = function_exists('wp_generate_uuid4') ? wp_generate_uuid4() : uniqid('filechi_lock_', true);
-		if (empty($token)) {
-			$token = uniqid('filechi_lock_', true);
-		}
-
-		$set = set_transient($lock_key, $token, 120);
+		$set   = set_transient($lock_key, $token, 120);
 		return $set ? $token : false;
 	}
 

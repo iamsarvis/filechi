@@ -50,6 +50,14 @@ class Mock_Storage_Driver {
 	public function exists($remote_path) {
 		return false;
 	}
+
+	public function get_last_error() {
+		return null;
+	}
+
+	public function get_size($remote_path) {
+		return -1;
+	}
 }
 
 class FileChi_Storage_Factory {

@@ -377,6 +377,19 @@ if (!function_exists('delete_post_meta')) {
 	}
 }
 
+if (!function_exists('wp_get_attachment_metadata')) {
+	function wp_get_attachment_metadata($attachment_id, $unfiltered = false) {
+		return $GLOBALS['mock_post_meta'][$attachment_id]['_wp_attachment_metadata'] ?? array();
+	}
+}
+
+if (!function_exists('wp_update_attachment_metadata')) {
+	function wp_update_attachment_metadata($attachment_id, $data) {
+		$GLOBALS['mock_post_meta'][$attachment_id]['_wp_attachment_metadata'] = $data;
+		return true;
+	}
+}
+
 if (!function_exists('as_schedule_single_action')) {
 	function as_schedule_single_action($time, $hook, $args = array(), $group = '') {
 		$GLOBALS['mock_scheduled_actions'][] = compact('time', 'hook', 'args', 'group');
@@ -392,6 +405,12 @@ if (!function_exists('as_has_scheduled_action')) {
 
 if (!function_exists('as_unschedule_all_actions')) {
 	function as_unschedule_all_actions($hook, $args = array(), $group = '') {
+		$GLOBALS['mock_unscheduled_actions'][] = compact('hook', 'args', 'group');
+	}
+}
+
+if (!function_exists('as_unschedule_action')) {
+	function as_unschedule_action($hook, $args = array(), $group = '') {
 		$GLOBALS['mock_unscheduled_actions'][] = compact('hook', 'args', 'group');
 	}
 }
@@ -475,6 +494,17 @@ if (!class_exists('Mock_WPDB')) {
 
 		public function query($sql) {
 			$this->queries[] = $sql;
+			if (strpos($sql, 'DELETE FROM') !== false && strpos($sql, $this->postmeta) !== false) {
+				if (preg_match_all("/'(_filechi_[^']+)'/", $sql, $matches)) {
+					foreach ($matches[1] as $meta_key) {
+						if (isset($GLOBALS['mock_post_meta']) && is_array($GLOBALS['mock_post_meta'])) {
+							foreach ($GLOBALS['mock_post_meta'] as $pid => $meta_arr) {
+								unset($GLOBALS['mock_post_meta'][$pid][$meta_key]);
+							}
+						}
+					}
+				}
+			}
 			return true;
 		}
 
@@ -501,6 +531,9 @@ if (!class_exists('Mock_WPDB')) {
 		public function get_results($query, $output = 'ARRAY_A') {
 			$this->queries[] = $query;
 			if ($this->get_results_override !== null) {
+				if (is_callable($this->get_results_override)) {
+					return call_user_func($this->get_results_override, $query, $output);
+				}
 				return $this->get_results_override;
 			}
 			return array();
