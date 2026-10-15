@@ -460,14 +460,7 @@ class FileChi_DB {
 		$provider_id   = absint($provider_id);
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$rows = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT id, file_path, file_size, status, error_message, attempts, updated_at FROM {$table} WHERE attachment_id = %d AND provider_id = %d",
-				$attachment_id,
-				$provider_id
-			),
-			ARRAY_A
-		);
+		$rows = $wpdb->get_results($wpdb->prepare("SELECT id, file_path, file_size, status, error_message, attempts, updated_at FROM {$table} WHERE attachment_id = %d AND provider_id = %d", $attachment_id, $provider_id), ARRAY_A);
 
 		if (!is_array($rows)) {
 			return array();
@@ -642,12 +635,7 @@ class FileChi_DB {
 		$placeholders = implode(',', array_fill(0, count($keys), '%s'));
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe placeholders interpolation.
-		return (int) $wpdb->query(
-			$wpdb->prepare(
-				"DELETE FROM {$wpdb->postmeta} WHERE meta_key IN ({$placeholders})",
-				$keys
-			)
-		);
+		return (int) $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->postmeta} WHERE meta_key IN ({$placeholders})", $keys));
 	}
 
 	/**
