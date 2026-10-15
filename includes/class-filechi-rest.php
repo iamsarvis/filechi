@@ -219,6 +219,19 @@ class FileChi_REST extends WP_REST_Controller {
 			$target_driver   = $existing_record['driver'] ?? '';
 		}
 
+		$existing_record = FileChi_DB::get_provider($id, true);
+		if ($existing_record && !empty($existing_record['settings']['tls_pin'])) {
+			$old_host = (string) ($existing_record['settings']['host'] ?? '');
+			$old_port = isset($existing_record['settings']['port']) ? (string) $existing_record['settings']['port'] : '';
+			$new_host = isset($params['settings']['host']) ? (string) $params['settings']['host'] : $old_host;
+			$new_port = isset($params['settings']['port']) ? (string) $params['settings']['port'] : $old_port;
+			if ($old_host !== $new_host || $old_port !== $new_port) {
+				if (isset($params['settings']) && is_array($params['settings'])) {
+					$params['settings']['tls_pin'] = '';
+				}
+			}
+		}
+
 		if ($target_driver === 'ftps' && isset($params['settings']['tls_pin']) && trim((string) $params['settings']['tls_pin']) !== '') {
 			require_once dirname(__FILE__) . '/storage/class-filechi-storage-ftps.php';
 			if (!FileChi_Storage_FTPS::is_valid_tls_pin($params['settings']['tls_pin'])) {

@@ -271,6 +271,19 @@ class FileChi_DB {
 				}
 			}
 
+			// If host or port changes while tls_pin is set, clear the pin (the user must trust again)
+			$existing_pin = (string) ($existing_settings['tls_pin'] ?? '');
+			if ($existing_pin !== '') {
+				$old_host = (string) ($existing_settings['host'] ?? '');
+				$new_host = isset($submitted['host']) ? (string) $submitted['host'] : $old_host;
+				$old_port = isset($existing_settings['port']) ? (string) $existing_settings['port'] : '';
+				$new_port = isset($submitted['port']) ? (string) $submitted['port'] : $old_port;
+
+				if ($old_host !== $new_host || $old_port !== $new_port) {
+					$merged_settings['tls_pin'] = '';
+				}
+			}
+
 			// Handle sensitive keys: never overwrite stored secret with empty value when decryption failed or field was not submitted / was masked
 			foreach (self::$sensitive_keys as $key) {
 				if (isset($submitted[$key])) {
