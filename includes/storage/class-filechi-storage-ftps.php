@@ -46,8 +46,38 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 				'base_url'       => '',
 				'timeout'        => 30,
 				'ftps_mode'      => 'explicit',
+				'tls_pin'        => '',
 			)
 		);
+	}
+
+	/**
+	 * Validates a TLS pinned public key format.
+	 * Format: 'sha256//' followed by 44 base64 characters.
+	 *
+	 * @param mixed $pin
+	 * @return bool
+	 */
+	public static function is_valid_tls_pin($pin) {
+		if (!is_string($pin)) {
+			return false;
+		}
+
+		$trimmed = trim($pin);
+		if (strlen($trimmed) !== 52) {
+			return false;
+		}
+
+		return (bool) preg_match('/^sha256\/\/[A-Za-z0-9+\/]{43}[A-Za-z0-9+\/=]$/', $trimmed);
+	}
+
+	/**
+	 * Returns the configured TLS pinned public key or empty string.
+	 *
+	 * @return string
+	 */
+	public function get_tls_pin() {
+		return isset($this->settings['tls_pin']) ? trim((string) $this->settings['tls_pin']) : '';
 	}
 
 	/**
