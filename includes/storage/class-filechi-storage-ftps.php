@@ -81,6 +81,77 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	}
 
 	/**
+	 * Computes the sha256// pinned public key from a certificate PEM string.
+	 *
+	 * PEM -> openssl_pkey_get_details() -> DER SubjectPublicKeyInfo -> SHA-256 -> base64 -> sha256//...
+	 *
+	 * @param string $cert_pem
+	 * @return string|false Pin string on success, false on failure.
+	 */
+	public static function compute_pin_from_certificate($cert_pem) {
+		if (empty($cert_pem) || !function_exists('openssl_pkey_get_public') || !function_exists('openssl_pkey_get_details')) {
+			return false;
+		}
+
+		$pubkey = @openssl_pkey_get_public($cert_pem);
+		if (!$pubkey) {
+			return false;
+		}
+
+		$details = @openssl_pkey_get_details($pubkey);
+		if (!is_array($details) || empty($details['key'])) {
+			return false;
+		}
+
+		$pubkey_pem = $details['key'];
+		$lines      = explode("\n", trim($pubkey_pem));
+		$der_base64 = '';
+		foreach ($lines as $line) {
+			$line = trim($line);
+			if ($line === '' || strpos($line, '-----') === 0) {
+				continue;
+			}
+			$der_base64 .= $line;
+		}
+
+		$spki_der = base64_decode($der_base64);
+		if ($spki_der === false || $spki_der === '') {
+			return false;
+		}
+
+		$hash_binary = hash('sha256', $spki_der, true);
+		return 'sha256//' . base64_encode($hash_binary);
+	}
+
+	/**
+	 * Formats key algorithm description (e.g. "RSA (2048 bits)" or "EC (256 bits)").
+	 *
+	 * @param array<string, mixed> $details Details from openssl_pkey_get_details().
+	 * @return string
+	 */
+	public static function format_key_algorithm(array $details) {
+		$type_num = $details['type'] ?? -1;
+		$bits     = $details['bits'] ?? 0;
+
+		$type_name = 'Unknown';
+		if ($type_num === OPENSSL_KEYTYPE_RSA) {
+			$type_name = 'RSA';
+		} elseif ($type_num === OPENSSL_KEYTYPE_DSA) {
+			$type_name = 'DSA';
+		} elseif ($type_num === OPENSSL_KEYTYPE_DH) {
+			$type_name = 'DH';
+		} elseif ($type_num === OPENSSL_KEYTYPE_EC) {
+			$type_name = 'EC';
+		}
+
+		if ($bits > 0) {
+			return sprintf('%s (%d bits)', $type_name, $bits);
+		}
+
+		return $type_name;
+	}
+
+	/**
 	 * Returns the FTPS mode: 'explicit' or 'implicit'.
 	 *
 	 * @return string
@@ -614,6 +685,118 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	}
 
 	/**
+	 * Discovers and extracts the server's public key certificate info.
+	 *
+	 * Connects with VERIFYPEER=0, VERIFYHOST=0, CURLOPT_CERTINFO=true and anonymous credentials
+	 * so user credentials are NEVER sent to an untrusted host.
+	 *
+	 * @param array<int, array<string, mixed>>|null $cert_info_override Optional cert info for testing.
+	 * @return array<string, mixed>
+	 */
+	public function discover_certificate($cert_info_override = null) {
+		$cert_info = $cert_info_override;
+
+		if ($cert_info === null) {
+			$discovery_url = $this->build_base_curl_url();
+			$discovery_ch  = curl_init($discovery_url);
+
+			if (defined('CURLOPT_PROTOCOLS')) {
+				curl_setopt($discovery_ch, CURLOPT_PROTOCOLS, CURLPROTO_FTP | CURLPROTO_FTPS);
+			}
+			if (defined('CURLOPT_REDIR_PROTOCOLS')) {
+				curl_setopt($discovery_ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_FTP | CURLPROTO_FTPS);
+			}
+
+			if ($this->get_ftps_mode() === 'explicit') {
+				curl_setopt($discovery_ch, CURLOPT_USE_SSL, defined('CURLUSESSL_ALL') ? CURLUSESSL_ALL : 3);
+			}
+
+			// Read certificate only: anonymous credentials, verification off
+			curl_setopt($discovery_ch, CURLOPT_SSL_VERIFYPEER, false);
+			curl_setopt($discovery_ch, CURLOPT_SSL_VERIFYHOST, 0);
+			curl_setopt($discovery_ch, CURLOPT_CERTINFO, true);
+			curl_setopt($discovery_ch, CURLOPT_USERPWD, 'anonymous:anonymous@example.com');
+
+			$passive = !empty($this->settings['passive']);
+			curl_setopt($discovery_ch, CURLOPT_FTP_USE_EPSV, $passive);
+			if (defined('CURLOPT_FTP_SKIP_PASV_IP')) {
+				curl_setopt($discovery_ch, CURLOPT_FTP_SKIP_PASV_IP, true);
+			}
+
+			curl_setopt($discovery_ch, CURLOPT_FTPLISTONLY, true);
+			curl_setopt($discovery_ch, CURLOPT_RETURNTRANSFER, true);
+			$this->apply_timeouts($discovery_ch, 0);
+
+			@curl_exec($discovery_ch);
+			$cert_info = curl_getinfo($discovery_ch, CURLINFO_CERTINFO);
+			curl_close($discovery_ch);
+		}
+
+		if (!is_array($cert_info) || empty($cert_info[0]) || empty($cert_info[0]['Cert'])) {
+			return array();
+		}
+
+		$first_cert = $cert_info[0];
+		$cert_pem   = (string) $first_cert['Cert'];
+
+		$fingerprint = self::compute_pin_from_certificate($cert_pem);
+		if (!$fingerprint) {
+			return array();
+		}
+
+		$algorithm = 'Unknown';
+		$pubkey    = @openssl_pkey_get_public($cert_pem);
+		if ($pubkey) {
+			$details = @openssl_pkey_get_details($pubkey);
+			if (is_array($details)) {
+				$algorithm = self::format_key_algorithm($details);
+			}
+		}
+
+		$subject    = (string) ($first_cert['Subject'] ?? '');
+		$issuer     = (string) ($first_cert['Issuer'] ?? '');
+		$valid_from = (string) ($first_cert['Start date'] ?? '');
+		$valid_to   = (string) ($first_cert['Expire date'] ?? '');
+		$san        = (string) ($first_cert['X509v3 Subject Alternative Name'] ?? '');
+
+		if (function_exists('openssl_x509_parse')) {
+			$parsed = @openssl_x509_parse($cert_pem);
+			if (is_array($parsed)) {
+				if ($subject === '' && isset($parsed['name'])) {
+					$subject = (string) $parsed['name'];
+				}
+				if ($issuer === '' && isset($parsed['issuer'])) {
+					$issuer = is_array($parsed['issuer'])
+						? implode(', ', array_map(function ($k, $v) { return "{$k}={$v}"; }, array_keys($parsed['issuer']), $parsed['issuer']))
+						: (string) $parsed['issuer'];
+				}
+				if ($valid_from === '' && isset($parsed['validFrom_time_t'])) {
+					$valid_from = gmdate('M d H:i:s Y e', $parsed['validFrom_time_t']);
+				}
+				if ($valid_to === '' && isset($parsed['validTo_time_t'])) {
+					$valid_to = gmdate('M d H:i:s Y e', $parsed['validTo_time_t']);
+				}
+				if ($san === '' && isset($parsed['extensions']['subjectAltName'])) {
+					$san = (string) $parsed['extensions']['subjectAltName'];
+				}
+			}
+		}
+
+		return array(
+			'success'     => false,
+			'needs_trust' => true,
+			'fingerprint' => $fingerprint,
+			'algorithm'   => $algorithm,
+			'subject'     => $subject,
+			'issuer'      => $issuer,
+			'valid_from'  => $valid_from,
+			'valid_to'    => $valid_to,
+			'san'         => $san,
+			'message'     => esc_html__('Server TLS certificate is untrusted. Review details and trust its public key once to enable pinned connection.', 'filechi'),
+		);
+	}
+
+	/**
 	 * {@inheritdoc}
 	 */
 	public function test_connection() {
@@ -676,6 +859,13 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 		curl_close($ch);
 
 		if ($list_output === false) {
+			if ($tls_pin === '' && ($curl_errno === 60 || $curl_errno === 51)) {
+				$discovery = $this->discover_certificate();
+				if (!empty($discovery['needs_trust'])) {
+					return $discovery;
+				}
+			}
+
 			$mapped = $this->map_curl_error($curl_errno, $curl_error, $response_code, 'FTPS connection test failed');
 			return array(
 				'success' => false,
