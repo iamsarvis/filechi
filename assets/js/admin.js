@@ -923,7 +923,7 @@
 							status: 'warning',
 							isDismissible: false,
 							style: { marginBottom: 15 },
-						}, "FTPS in this version encrypts the connection but does not verify the server's TLS certificate. Prefer SFTP or S3-compatible storage for sensitive data."),
+						}, "FTPS verifies the server's TLS certificate against the standard certificate authorities. Use the host name that appears on the certificate. Servers with self-signed certificates are not supported yet."),
 						el(TextControl, {
 							label: 'FTPS Host / IP',
 							value: s.host || '',
