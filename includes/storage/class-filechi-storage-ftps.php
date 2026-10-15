@@ -115,7 +115,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 		}
 
 		$spki_der = base64_decode($der_base64);
-		if ($spki_der === false || $spki_der === '') {
+		if (empty($spki_der)) {
 			return false;
 		}
 
@@ -732,7 +732,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			curl_close($discovery_ch);
 		}
 
-		if (!is_array($cert_info) || empty($cert_info[0]) || empty($cert_info[0]['Cert'])) {
+		if (empty($cert_info) || empty($cert_info[0]) || empty($cert_info[0]['Cert'])) {
 			return array();
 		}
 
