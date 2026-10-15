@@ -227,13 +227,34 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			curl_setopt($ch, CURLOPT_USE_SSL, defined('CURLUSESSL_ALL') ? CURLUSESSL_ALL : 3);
 		}
 
-		// TLS Verification ON: verify peer and host; load CA bundle from WordPress
-		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-		curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+		// TLS Verification modes:
+		// Hard rule: never connect with verification disabled unless a valid pin is set.
+		$tls_pin = $this->get_tls_pin();
+		if ($tls_pin !== '') {
+			if (!self::is_valid_tls_pin($tls_pin)) {
+				throw new InvalidArgumentException(
+					esc_html__('Invalid TLS pin format. Verification cannot be disabled without a valid pin.', 'filechi')
+				);
+			}
 
-		$ca_bundle = defined('ABSPATH') && defined('WPINC') ? ABSPATH . WPINC . '/certificates/ca-bundle.crt' : '';
-		if (!empty($ca_bundle) && file_exists($ca_bundle)) {
-			curl_setopt($ch, CURLOPT_CAINFO, $ca_bundle);
+			if (!defined('CURLOPT_PINNEDPUBLICKEY')) {
+				throw new RuntimeException(
+					esc_html__('CURLOPT_PINNEDPUBLICKEY is not supported by this PHP environment.', 'filechi')
+				);
+			}
+
+			curl_setopt($ch, CURLOPT_PINNEDPUBLICKEY, $tls_pin);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+		} else {
+			// TLS Verification ON: verify peer and host; load CA bundle from WordPress
+			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+
+			$ca_bundle = defined('ABSPATH') && defined('WPINC') ? ABSPATH . WPINC . '/certificates/ca-bundle.crt' : '';
+			if (!empty($ca_bundle) && file_exists($ca_bundle)) {
+				curl_setopt($ch, CURLOPT_CAINFO, $ca_bundle);
+			}
 		}
 
 		// Authentication
@@ -291,6 +312,11 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	public function map_curl_error($errno, $errstr, $response_code = 0, $default_msg = '') {
 		$code_prefix  = $errno > 0 ? "[curl {$errno}] " : '';
 		$reply_suffix = $response_code > 0 ? " (FTP reply {$response_code})" : '';
+
+		// cURL 90 (CURLE_SSL_PINNEDPUBKEYNOTMATCH)
+		if ($errno === 90) {
+			return $code_prefix . "PINNED KEY MISMATCH — the server's key changed or someone is intercepting the connection" . $reply_suffix;
+		}
 
 		// cURL 60 (CURLE_PEER_FAILED_VERIFICATION) or 51 (CURLE_SSL_PEER_CERTIFICATE)
 		if ($errno === 60 || $errno === 51) {
@@ -614,6 +640,18 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 				'message' => esc_html__('PHP cURL with FTP and SSL is required.', 'filechi'),
 				'details' => null,
 			);
+		}
+
+		$tls_pin = $this->get_tls_pin();
+		if ($tls_pin !== '') {
+			$ver_num = isset($version['version_number']) ? (int) $version['version_number'] : 0;
+			if (!defined('CURLOPT_PINNEDPUBLICKEY') || $ver_num < 0x072700) {
+				return array(
+					'success' => false,
+					'message' => esc_html__('FTPS public key pinning requires libcurl 7.39.0 or higher with CURLOPT_PINNEDPUBLICKEY support.', 'filechi'),
+					'details' => null,
+				);
+			}
 		}
 
 		$host = trim((string) ($this->settings['host'] ?? ''));
