@@ -168,9 +168,24 @@ assert(!isset($provider_no_prot['type']), "Provider fixture must NOT use 'type' 
 
 if (!class_exists('FileChi_DB')) {
 	class FileChi_DB {
-		public static $logs = array();
+		public static $logs      = array();
+		public static $providers = array();
+
 		public static function log_transfer($aid, $pid, $file, $size, $status, $msg = '') {
 			self::$logs[] = compact('aid', 'pid', 'file', 'size', 'status', 'msg');
+		}
+
+		public static function get_provider($id) {
+			return self::$providers[(int) $id] ?? null;
+		}
+
+		public static function get_default_provider() {
+			foreach (self::$providers as $p) {
+				if (!empty($p['is_default'])) {
+					return $p;
+				}
+			}
+			return reset(self::$providers) ?: null;
 		}
 	}
 }
@@ -223,5 +238,125 @@ assert($factory_result === null, "Factory must return null when 'driver' key is 
 $driver_from_legacy = $legacy_provider_with_type_only['driver'] ?? '';
 assert($driver_from_legacy === '', "Provider row without 'driver' must not resolve driver from legacy 'type'");
 echo "Provider row without 'driver' yields empty driver: PASS\n";
+
+echo "\n=== 7. Item 5.5 Real-Shape Fixture Suite ===\n";
+require_once FILECHI_DIR . 'includes/class-filechi-activator.php';
+require_once FILECHI_DIR . 'includes/class-filechi-woocommerce.php';
+require_once FILECHI_DIR . 'includes/storage/class-filechi-storage-s3.php';
+
+$upload_dir = wp_upload_dir();
+$prot_rel   = 'woocommerce_uploads/2026/10/product-file-201.zip';
+$prot_full  = $upload_dir['basedir'] . '/' . $prot_rel;
+if (!is_dir(dirname($prot_full))) {
+	mkdir(dirname($prot_full), 0777, true);
+}
+file_put_contents($prot_full, 'DUMMY_PRODUCT_CONTENT');
+
+// 5.5.1: protected path + SFTP provider without protected_path → refuse and stay local
+$provider1 = filechi_create_test_provider(
+	1,
+	'sftp',
+	array(
+		'host'           => 'sftp.example.com',
+		'root_path'      => '/var/www/uploads',
+		'protected_path' => '', // missing
+	),
+	'Default SFTP No Protected',
+	1
+);
+FileChi_DB::$providers[1] = $provider1;
+
+$GLOBALS['mock_post_meta'][201] = array(
+	'_wp_attached_file' => $prot_rel,
+);
+delete_option('filechi_protected_path_missing_notice');
+
+$offload_res = FileChi_Media::offload_attachment(201);
+echo "Protected file + SFTP without protected_path refused: " . ($offload_res === false ? 'PASS' : 'FAIL') . "\n";
+assert($offload_res === false, 'Offload must be refused when protected_path is missing');
+assert(empty(get_post_meta(201, '_filechi_offloaded', true)), 'Attachment must stay local');
+assert(file_exists($prot_full), 'Local copy must remain untouched');
+$notice_201 = get_option('filechi_protected_path_missing_notice');
+assert(!empty($notice_201['attachment_id']) && $notice_201['attachment_id'] === 201, 'Admin notice must be set');
+echo "Attachment stayed local and notice created: PASS\n";
+
+// 5.5.2: same with protected_path → routed there
+$provider2 = filechi_create_test_provider(
+	2,
+	'sftp',
+	array(
+		'host'           => 'sftp.example.com',
+		'root_path'      => '/var/www/uploads',
+		'protected_path' => '/var/secure_vault',
+	),
+	'SFTP With Protected',
+	0
+);
+FileChi_DB::$providers[2] = $provider2;
+$driver2 = FileChi_Storage_Factory::create($provider2);
+assert($driver2 !== null);
+$ref2 = new ReflectionClass($driver2);
+$m2   = $ref2->getMethod('resolve_path');
+$m2->setAccessible(true);
+$routed = $m2->invoke($driver2, $prot_rel);
+echo "Protected file with protected_path routed to: $routed\n";
+assert($routed === '/var/secure_vault/' . $prot_rel, 'Protected file must be routed to protected_path');
+echo "SFTP routed to protected_path: PASS\n";
+
+// 5.5.3: non-offloaded downloadable file → WooCommerce path untouched
+$wc = new FileChi_WooCommerce();
+update_option('filechi_settings', array(
+	'wc_signed_downloads' => 1,
+	'wc_download_expiry'  => 900,
+));
+$non_offloaded_rel = 'woocommerce_uploads/2026/10/local-ebook.pdf';
+$GLOBALS['mock_post_meta'][202] = array(
+	'_wp_attached_file' => $non_offloaded_rel,
+	// _filechi_offloaded is NOT 1
+);
+$orig_url     = 'https://example.com/wp-content/uploads/' . $non_offloaded_rel;
+$filtered_url = $wc->filter_download_path($orig_url, 123, 'dl_202');
+echo "Non-offloaded downloadable file path untouched: " . ($filtered_url === $orig_url ? 'PASS' : 'FAIL') . "\n";
+assert($filtered_url === $orig_url, 'Non-offloaded file download path must remain untouched');
+
+// 5.5.4: offloaded file with a non-default provider → that provider is used
+$provider3 = filechi_create_test_provider(
+	3,
+	's3',
+	array(
+		'endpoint'   => 'https://s3.custom-provider.example.com',
+		'bucket'     => 'secure-wc-bucket',
+		'access_key' => 'MYACCESSKEY3',
+		'secret_key' => 'MYSECRETKEY3',
+		'region'     => 'us-east-1',
+	),
+	'Non-Default S3 Provider',
+	0
+);
+FileChi_DB::$providers[3] = $provider3;
+
+$offloaded_rel = 'woocommerce_uploads/2026/10/pro-plugin.zip';
+$GLOBALS['mock_post_meta'][203] = array(
+	'_wp_attached_file'    => $offloaded_rel,
+	'_filechi_offloaded'   => 1,
+	'_filechi_provider_id' => 3, // Non-default provider
+);
+$signed_url = $wc->filter_download_path($offloaded_rel, 456, 'dl_203');
+echo "Signed download URL generated: " . (!empty($signed_url) && $signed_url !== $offloaded_rel ? 'PASS' : 'FAIL') . "\n";
+assert($signed_url !== $offloaded_rel, 'Offloaded file must return signed URL');
+assert(
+	strpos($signed_url, 's3.custom-provider.example.com') !== false || strpos($signed_url, 'secure-wc-bucket') !== false,
+	'Signed URL must be generated using provider 3, not default provider'
+);
+echo "Offloaded file used non-default provider (provider 3): PASS\n";
+
+// 5.5.5: a regular upload path is never treated as protected
+echo "Testing regular upload paths are never treated as protected...\n";
+assert(FileChi_Media::is_protected_file('2026/10/regular-image.jpg') === false);
+assert(FileChi_Media::is_protected_file('2026/10/woocommerce_uploads/image.jpg') === false);
+assert(FileChi_Media::is_protected_file('my-woocommerce_uploads/file.zip') === false);
+assert(FileChi_Media::is_protected_file('woocommerce_uploads_backup/file.zip') === false);
+assert(FileChi_Media::is_protected_file('woocommerce_uploads/2026/10/file.zip') === true);
+echo "Regular paths never treated as protected: PASS\n";
 
 echo "\nALL PROTECTED DOWNLOADS TESTS PASSED!\n";
