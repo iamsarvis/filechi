@@ -401,6 +401,11 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 
 		// cURL 7 (CURLE_COULDNT_CONNECT)
 		if ($errno === 7) {
+			if ($response_code === 227 || $response_code === 229) {
+				$passive_info = self::parse_passive_info(array(), $errstr);
+				$target       = ($passive_info['ip'] ? $passive_info['ip'] . ':' : '') . ($passive_info['port'] > 0 ? $passive_info['port'] : 'passive-port');
+				return $code_prefix . "data connection failed to {$target} — firewall or passive port blocked" . $reply_suffix . ($errstr ? ": {$errstr}" : '');
+			}
 			return $code_prefix . 'connection failed' . $reply_suffix . ($errstr ? ": {$errstr}" : '');
 		}
 
