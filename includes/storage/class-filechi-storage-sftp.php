@@ -117,14 +117,15 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 
 		// If this is a protected WooCommerce file, route to protected_path (outside web root)
 		if (class_exists('FileChi_Media') && FileChi_Media::is_protected_file($remote_path)) {
-			$prot_root = trim($this->settings['protected_path'] ?? '');
+			$prot_root = trim((string) ($this->settings['protected_path'] ?? ''));
 			if (!empty($prot_root)) {
 				$prot_root = rtrim(str_replace('\\', '/', $prot_root), '/');
 				return $prot_root . '/' . $remote_path;
 			}
+			throw new RuntimeException(__('Protected file cannot be stored: SFTP provider has no protected_path configured.', 'filechi'));
 		}
 
-		$root = trim($this->settings['root_path'] ?? '');
+		$root = trim((string) ($this->settings['root_path'] ?? ''));
 		if (!empty($root)) {
 			$root = rtrim(str_replace('\\', '/', $root), '/');
 			return $root . '/' . $remote_path;

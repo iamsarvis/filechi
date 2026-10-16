@@ -234,6 +234,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 				$prot_root = rtrim(str_replace('\\', '/', $prot_root), '/');
 				return $prot_root . '/' . $clean_path;
 			}
+			throw new RuntimeException(__('Protected file cannot be stored: FTPS provider has no protected_path configured.', 'filechi'));
 		}
 
 		$root = trim((string) ($this->settings['root_path'] ?? ''));
@@ -453,7 +454,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 
 		try {
 			$resolved_path = $this->resolve_path($remote_path);
-		} catch (InvalidArgumentException $e) {
+		} catch (\Exception $e) {
 			$this->last_error = $e->getMessage();
 			return false;
 		}
@@ -511,7 +512,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 
 		try {
 			$resolved_path = $this->resolve_path($remote_path);
-		} catch (InvalidArgumentException $e) {
+		} catch (\Exception $e) {
 			$this->last_error = $e->getMessage();
 			return false;
 		}
@@ -564,7 +565,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 
 		try {
 			$resolved_path = $this->resolve_path($remote_path);
-		} catch (InvalidArgumentException $e) {
+		} catch (\Exception $e) {
 			$this->last_error = $e->getMessage();
 			return false;
 		}
@@ -608,7 +609,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 
 		try {
 			$resolved_path = $this->resolve_path($remote_path);
-		} catch (InvalidArgumentException $e) {
+		} catch (\Exception $e) {
 			$this->last_error = $e->getMessage();
 			return -1;
 		}
@@ -680,7 +681,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 
 		try {
 			$resolved_path = $this->resolve_path($remote_path);
-		} catch (InvalidArgumentException $e) {
+		} catch (\Exception $e) {
 			$this->last_error = $e->getMessage();
 			return false;
 		}

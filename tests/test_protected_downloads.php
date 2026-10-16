@@ -66,6 +66,44 @@ echo "FTPS protected file path: $resolved_ftps_prot\n";
 assert($resolved_ftps_normal === 'public_html/uploads/2026/10/normal.jpg');
 assert($resolved_ftps_prot === 'secure_storage/woocommerce_uploads/2026/10/file.zip');
 
+// Test Fail Closed: SFTP without protected_path throws RuntimeException on protected path
+$sftp_no_prot = new FileChi_Storage_SFTP(array(
+	'host'      => 'localhost',
+	'username'  => 'test',
+	'root_path' => '/var/www/public_html/wp-content/uploads',
+));
+$reflection_sftp_no_prot = new ReflectionClass($sftp_no_prot);
+$resolve_sftp_no_prot    = $reflection_sftp_no_prot->getMethod('resolve_path');
+$resolve_sftp_no_prot->setAccessible(true);
+
+$sftp_fail_closed = false;
+try {
+	$resolve_sftp_no_prot->invoke($sftp_no_prot, 'woocommerce_uploads/2026/10/file.zip');
+} catch (RuntimeException $e) {
+	$sftp_fail_closed = true;
+}
+echo "SFTP without protected_path throws on protected file (fail-closed): " . ($sftp_fail_closed ? 'PASS' : 'FAIL') . "\n";
+assert($sftp_fail_closed === true, 'SFTP resolve_path must throw RuntimeException when protected_path is missing');
+
+// Test Fail Closed: FTPS without protected_path throws RuntimeException on protected path
+$ftps_no_prot = new FileChi_Storage_FTPS(array(
+	'host'      => 'localhost',
+	'username'  => 'test',
+	'root_path' => 'public_html/uploads',
+));
+$reflection_ftps_no_prot = new ReflectionClass($ftps_no_prot);
+$resolve_ftps_no_prot    = $reflection_ftps_no_prot->getMethod('resolve_path');
+$resolve_ftps_no_prot->setAccessible(true);
+
+$ftps_fail_closed = false;
+try {
+	$resolve_ftps_no_prot->invoke($ftps_no_prot, 'woocommerce_uploads/2026/10/file.zip');
+} catch (RuntimeException $e) {
+	$ftps_fail_closed = true;
+}
+echo "FTPS without protected_path throws on protected file (fail-closed): " . ($ftps_fail_closed ? 'PASS' : 'FAIL') . "\n";
+assert($ftps_fail_closed === true, 'FTPS resolve_path must throw RuntimeException when protected_path is missing');
+
 echo "\n=== 3. Streaming Proxy Memory Efficiency ===\n";
 $dummy_size = 5 * 1024 * 1024; // 5 MiB
 $mem_before = memory_get_usage();
