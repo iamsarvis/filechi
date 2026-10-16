@@ -84,6 +84,7 @@ function filechi_init() {
 	}
 
 	// Core classes
+	require_once FILECHI_DIR . 'includes/class-filechi-path.php';
 	require_once FILECHI_DIR . 'includes/class-filechi-crypto.php';
 	require_once FILECHI_DIR . 'includes/class-filechi-db.php';
 	require_once FILECHI_DIR . 'includes/storage/interface-filechi-storage.php';

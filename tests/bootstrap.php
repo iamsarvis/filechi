@@ -681,3 +681,4 @@ if (!class_exists('WP_REST_Request')) {
 }
 
 require_once FILECHI_DIR . 'includes/class-filechi-activator.php';
+require_once FILECHI_DIR . 'includes/class-filechi-path.php';
