@@ -209,6 +209,13 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			return false;
 		}
 
+		try {
+			FileChi_Path::validate($path);
+		} catch (FileChi_Path_Exception $e) {
+			$this->last_error = $e->getMessage();
+			return false;
+		}
+
 		return true;
 	}
 
@@ -219,8 +226,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	 * @return string
 	 */
 	public function resolve_path($remote_path) {
-		$clean_path = str_replace(array('\\', '../', '..\\'), array('/', '', ''), $remote_path);
-		$clean_path = ltrim($clean_path, '/');
+		$clean_path = FileChi_Path::validate($remote_path);
 
 		if (class_exists('FileChi_Media') && FileChi_Media::is_protected_file($clean_path)) {
 			$prot_root = trim((string) ($this->settings['protected_path'] ?? ''));
@@ -445,7 +451,12 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			return false;
 		}
 
-		$resolved_path = $this->resolve_path($remote_path);
+		try {
+			$resolved_path = $this->resolve_path($remote_path);
+		} catch (InvalidArgumentException $e) {
+			$this->last_error = $e->getMessage();
+			return false;
+		}
 		if (!$this->validate_remote_path($resolved_path)) {
 			return false;
 		}
@@ -498,7 +509,12 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	public function upload_content($content, $remote_path, $mime_type = '') {
 		$this->last_error = '';
 
-		$resolved_path = $this->resolve_path($remote_path);
+		try {
+			$resolved_path = $this->resolve_path($remote_path);
+		} catch (InvalidArgumentException $e) {
+			$this->last_error = $e->getMessage();
+			return false;
+		}
 		if (!$this->validate_remote_path($resolved_path)) {
 			return false;
 		}
@@ -546,7 +562,12 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	public function delete($remote_path) {
 		$this->last_error = '';
 
-		$resolved_path = $this->resolve_path($remote_path);
+		try {
+			$resolved_path = $this->resolve_path($remote_path);
+		} catch (InvalidArgumentException $e) {
+			$this->last_error = $e->getMessage();
+			return false;
+		}
 		if (!$this->validate_remote_path($resolved_path)) {
 			return false;
 		}
@@ -585,7 +606,12 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	public function get_size($remote_path) {
 		$this->last_error = '';
 
-		$resolved_path = $this->resolve_path($remote_path);
+		try {
+			$resolved_path = $this->resolve_path($remote_path);
+		} catch (InvalidArgumentException $e) {
+			$this->last_error = $e->getMessage();
+			return -1;
+		}
 		if (!$this->validate_remote_path($resolved_path)) {
 			return -1;
 		}
@@ -616,7 +642,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	 */
 	public function get_url($remote_path) {
 		$base_url   = rtrim((string) ($this->settings['base_url'] ?? ''), '/');
-		$clean_path = ltrim(str_replace('\\', '/', $remote_path), '/');
+		$clean_path = FileChi_Path::validate($remote_path);
 
 		if (!empty($base_url)) {
 			return $base_url . '/' . $clean_path;
@@ -631,7 +657,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	 */
 	public function get_signed_url($remote_path, $expires_in_seconds = 900) {
 		$expires    = time() + absint($expires_in_seconds);
-		$clean_path = ltrim(str_replace('\\', '/', $remote_path), '/');
+		$clean_path = FileChi_Path::validate($remote_path);
 
 		$token = hash_hmac('sha256', $clean_path . '|' . $expires, wp_salt('nonce'));
 
@@ -652,7 +678,12 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	public function stream_to_output($remote_path, $chunk_size = 1048576) {
 		$this->last_error = '';
 
-		$resolved_path = $this->resolve_path($remote_path);
+		try {
+			$resolved_path = $this->resolve_path($remote_path);
+		} catch (InvalidArgumentException $e) {
+			$this->last_error = $e->getMessage();
+			return false;
+		}
 		if (!$this->validate_remote_path($resolved_path)) {
 			return false;
 		}

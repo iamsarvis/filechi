@@ -84,6 +84,53 @@ Statically validates compatibility across the entire target PHP version range wi
 
 ---
 
+### 2.5 JavaScript & UI Flow Verification (Node.js Test Runner)
+
+Tests admin UI state transitions and cryptographic trust confirmation dialogs in Node.js (Node 18+ built-in test runner):
+
+- **PowerShell:**
+  ```powershell
+  node --test tests/*.mjs
+  # Syntax check on production script:
+  node --check assets/js/admin.js
+  ```
+- **CMD:**
+  ```cmd
+  node --test tests\*.mjs
+  REM Syntax check on production script:
+  node --check assets\js\admin.js
+  ```
+
+*Expected result:* `pass 2, fail 0` (`tests/test_trust_flow.mjs`).
+
+---
+
+### 2.6 Real FTPS Integration Test (Local FTPS Server via pyftpdlib)
+
+Spawns a real explicit FTPS server on loopback (`pyftpdlib` with TLS), generates an in-memory self-signed certificate, derives its SPKI SHA-256 public key pin (`sha256//...`), and runs the full 7-check driver integration suite:
+1. **Certificate Discovery:** Confirms untrusted certificate triggers `needs_trust` and discovers server pin.
+2. **Wrong Pin Rejection:** Confirms mismatched pin triggers `curl 90` (`CURLE_SSL_PINNEDPUBKEYNOTMATCH`).
+3. **Right Pin Acceptance:** Confirms all six diagnostic stages (`connect`, `tls`, `login`, `directory`, `data_connection`, `write_probe`) pass.
+4. **Real Upload:** Verifies encrypted file upload over TLS data connection.
+5. **Real Size Query:** Verifies remote file size query.
+6. **Real Streaming:** Verifies output streaming from remote FTPS server.
+7. **Real Deletion:** Verifies remote file cleanup and existence checks.
+
+- **PowerShell:**
+  ```powershell
+  python tests/real/test_ftps_server.py
+  # Or via the PHP runner:
+  php tests/real/run_ftps_test.php
+  ```
+- **CMD:**
+  ```cmd
+  python tests\real\test_ftps_server.py
+  REM Or via the PHP runner:
+  php tests\real\run_ftps_test.php
+  ```
+
+*Expected result:* `ALL 7 FTPS REAL CHECKS PASSED SUCCESSFULLY!`.
+
 ## 3. Rebuilding `includes/vendor` From a Clean Clone
 
 FileChi ships its runtime libraries directly inside `includes/vendor/` so end-users never have to run Composer. To regenerate `includes/vendor/` from source:

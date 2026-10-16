@@ -113,8 +113,7 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	 * @return string Normalized full remote path.
 	 */
 	private function resolve_path($remote_path) {
-		$remote_path = str_replace(array('\\', '../', '..\\'), array('/', '', ''), $remote_path);
-		$remote_path = ltrim($remote_path, '/');
+		$remote_path = FileChi_Path::validate($remote_path);
 
 		// If this is a protected WooCommerce file, route to protected_path (outside web root)
 		if (class_exists('FileChi_Media') && FileChi_Media::is_protected_file($remote_path)) {
@@ -230,8 +229,8 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	 * {@inheritdoc}
 	 */
 	public function get_url($remote_path) {
-		$base_url = rtrim($this->settings['base_url'], '/');
-		$clean_path = ltrim(str_replace('\\', '/', $remote_path), '/');
+		$base_url   = rtrim($this->settings['base_url'], '/');
+		$clean_path = FileChi_Path::validate($remote_path);
 
 		if (!empty($base_url)) {
 			return $base_url . '/' . $clean_path;
@@ -246,8 +245,8 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	 * {@inheritdoc}
 	 */
 	public function get_signed_url($remote_path, $expires_in_seconds = 900) {
-		$expires = time() + absint($expires_in_seconds);
-		$clean_path = ltrim(str_replace('\\', '/', $remote_path), '/');
+		$expires    = time() + absint($expires_in_seconds);
+		$clean_path = FileChi_Path::validate($remote_path);
 
 		$token = hash_hmac('sha256', $clean_path . '|' . $expires, wp_salt('nonce'));
 

@@ -84,6 +84,7 @@ function filechi_init() {
 	}
 
 	// Core classes
+	require_once FILECHI_DIR . 'includes/class-filechi-path.php';
 	require_once FILECHI_DIR . 'includes/class-filechi-crypto.php';
 	require_once FILECHI_DIR . 'includes/class-filechi-db.php';
 	require_once FILECHI_DIR . 'includes/storage/interface-filechi-storage.php';
@@ -127,17 +128,22 @@ function filechi_handle_signed_download() {
 		return;
 	}
 
-	$file    = isset($_GET['filechi_file']) ? sanitize_text_field(wp_unslash($_GET['filechi_file'])) : '';
-	$expires = isset($_GET['filechi_expires']) ? absint($_GET['filechi_expires']) : 0;
-	$token   = isset($_GET['filechi_token']) ? sanitize_text_field(wp_unslash($_GET['filechi_token'])) : '';
+	// Do not use sanitize_text_field() on paths; validate strictly via FileChi_Path::validate().
+	// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Path validated strictly via FileChi_Path::validate().
+	$raw_file = isset($_GET['filechi_file']) ? (string) wp_unslash($_GET['filechi_file']) : '';
+	$expires  = isset($_GET['filechi_expires']) ? absint($_GET['filechi_expires']) : 0;
+	$token    = isset($_GET['filechi_token']) ? sanitize_text_field(wp_unslash($_GET['filechi_token'])) : '';
 	// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
-	// Clean path and prevent directory traversal
-	$file = str_replace(array('../', '..\\', '\\'), array('', '', '/'), rawurldecode($file));
-	$file = ltrim($file, '/');
-
-	if (empty($file) || empty($expires) || empty($token)) {
+	if (empty($raw_file) || empty($expires) || empty($token)) {
 		wp_die(esc_html__('Invalid download request parameters.', 'filechi'), 400);
+	}
+
+	// Validate path strictly (invalid -> 404)
+	try {
+		$file = FileChi_Path::validate(rawurldecode($raw_file));
+	} catch (InvalidArgumentException $e) {
+		wp_die(esc_html__('File not found.', 'filechi'), 404);
 	}
 
 	// Verify expiration

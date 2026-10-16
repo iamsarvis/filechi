@@ -100,20 +100,25 @@ class FileChi_WooCommerce {
 		$base_dir   = wp_normalize_path($upload_dir['basedir']);
 
 		$normalized = wp_normalize_path($path_or_url);
+		$candidate  = null;
 
 		// If URL matches uploads baseurl
 		if (strpos($path_or_url, $base_url) === 0) {
-			return ltrim(substr($path_or_url, strlen($base_url)), '/');
+			$candidate = ltrim(substr($path_or_url, strlen($base_url)), '/');
+		} elseif (strpos($normalized, $base_dir) === 0) {
+			// If path matches local uploads basedir
+			$candidate = ltrim(substr($normalized, strlen($base_dir)), '/');
+		} elseif (strpos($path_or_url, 'http://') === false && strpos($path_or_url, 'https://') === false) {
+			// If already a relative path
+			$candidate = $path_or_url;
 		}
 
-		// If path matches local uploads basedir
-		if (strpos($normalized, $base_dir) === 0) {
-			return ltrim(substr($normalized, strlen($base_dir)), '/');
-		}
-
-		// If already a relative path
-		if (strpos($path_or_url, 'http://') === false && strpos($path_or_url, 'https://') === false) {
-			return ltrim(str_replace('\\', '/', $path_or_url), '/');
+		if ($candidate !== null) {
+			try {
+				return FileChi_Path::validate($candidate);
+			} catch (InvalidArgumentException $e) {
+				return null;
+			}
 		}
 
 		return null;
