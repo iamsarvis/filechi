@@ -88,10 +88,14 @@ echo "Valid token accepted: PASS\n";
 echo "Tampered token rejected: PASS\n";
 
 $traversal_input = '../../../../etc/passwd';
-$clean_traversal = str_replace(array('../', '..\\', '\\'), array('', '', '/'), rawurldecode($traversal_input));
-$clean_traversal = ltrim($clean_traversal, '/');
-echo "Traversal path '$traversal_input' neutralized to '$clean_traversal': " . ($clean_traversal === 'etc/passwd' ? 'PASS' : 'FAIL') . "\n";
-assert($clean_traversal === 'etc/passwd');
+$traversal_rejected = false;
+try {
+	FileChi_Path::validate(rawurldecode($traversal_input));
+} catch (InvalidArgumentException $e) {
+	$traversal_rejected = true;
+}
+echo "Traversal path '$traversal_input' rejected by FileChi_Path: " . ($traversal_rejected ? 'PASS' : 'FAIL') . "\n";
+assert($traversal_rejected === true);
 
 echo "\n=== 5. Offload Guard with Real Provider Row Shape (driver key) ===\n";
 // Use the standardized fixture helper returning real FileChi_DB shape (id, name, driver, settings, is_default)

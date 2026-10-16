@@ -200,7 +200,13 @@ class Testable_FileChi_Storage_FTPS extends FileChi_Storage_FTPS {
 	public $mock_delete_success = true;
 
 	public function get_size($remote_path) {
-		if (!$this->validate_remote_path($this->resolve_path($remote_path))) {
+		try {
+			$resolved = $this->resolve_path($remote_path);
+		} catch (InvalidArgumentException $e) {
+			$this->last_error = $e->getMessage();
+			return -1;
+		}
+		if (!$this->validate_remote_path($resolved)) {
 			return -1;
 		}
 		return $this->mock_size;
@@ -213,7 +219,12 @@ class Testable_FileChi_Storage_FTPS extends FileChi_Storage_FTPS {
 			return false;
 		}
 
-		$resolved_path = $this->resolve_path($remote_path);
+		try {
+			$resolved_path = $this->resolve_path($remote_path);
+		} catch (InvalidArgumentException $e) {
+			$this->last_error = $e->getMessage();
+			return false;
+		}
 		if (!$this->validate_remote_path($resolved_path)) {
 			return false;
 		}
@@ -235,7 +246,12 @@ class Testable_FileChi_Storage_FTPS extends FileChi_Storage_FTPS {
 
 	public function delete($remote_path) {
 		$this->last_error = '';
-		$resolved = $this->resolve_path($remote_path);
+		try {
+			$resolved = $this->resolve_path($remote_path);
+		} catch (InvalidArgumentException $e) {
+			$this->last_error = $e->getMessage();
+			return false;
+		}
 		if (!$this->validate_remote_path($resolved)) {
 			return false;
 		}
