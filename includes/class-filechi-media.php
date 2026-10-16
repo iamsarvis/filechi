@@ -210,7 +210,7 @@ class FileChi_Media {
 			}
 		}
 
-		$provider_driver = $provider['driver'] ?? $provider['type'] ?? '';
+		$provider_driver = $provider['driver'] ?? '';
 		if ($has_protected && ($provider_driver === 'sftp' || $provider_driver === 'ftps')) {
 			$protected_path = trim($provider['settings']['protected_path'] ?? '');
 			if (empty($protected_path)) {

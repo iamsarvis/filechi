@@ -148,7 +148,7 @@ foreach ($files_to_offload as $rel_path => $abs_path) {
 }
 
 $guard_triggered = false;
-$provider_driver = $provider_no_prot['driver'] ?? $provider_no_prot['type'] ?? '';
+$provider_driver = $provider_no_prot['driver'] ?? '';
 if ($has_protected && ($provider_driver === 'sftp' || $provider_driver === 'ftps')) {
 	$protected_path = trim($provider_no_prot['settings']['protected_path'] ?? '');
 	if (empty($protected_path)) {
@@ -166,5 +166,24 @@ assert($guard_triggered === true);
 $notice = get_option('filechi_protected_path_missing_notice');
 echo "Admin notice generated: " . (!empty($notice['attachment_id']) ? 'PASS' : 'FAIL') . "\n";
 assert($notice['attachment_id'] === 10);
+
+echo "\n=== 6. Rejection of Provider Row without 'driver' Key ===\n";
+require_once FILECHI_DIR . 'includes/storage/class-filechi-storage-factory.php';
+$legacy_provider_with_type_only = array(
+	'id'       => 99,
+	'name'     => 'Legacy Row',
+	'type'     => 'sftp', // legacy key
+	'settings' => array('host' => 'example.com'),
+);
+
+// Factory must reject rows without 'driver' key
+$factory_result = FileChi_Storage_Factory::create($legacy_provider_with_type_only);
+echo "Factory returns null for provider row missing 'driver': " . ($factory_result === null ? 'PASS' : 'FAIL') . "\n";
+assert($factory_result === null, "Factory must return null when 'driver' key is missing");
+
+// Ensure code never recognizes 'type' key
+$driver_from_legacy = $legacy_provider_with_type_only['driver'] ?? '';
+assert($driver_from_legacy === '', "Provider row without 'driver' must not resolve driver from legacy 'type'");
+echo "Provider row without 'driver' yields empty driver: PASS\n";
 
 echo "\nALL PROTECTED DOWNLOADS TESTS PASSED!\n";
