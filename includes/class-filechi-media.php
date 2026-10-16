@@ -454,68 +454,86 @@ class FileChi_Media {
 	 * @param string $url Original attachment URL.
 	 * @param int    $attachment_id Attachment post ID.
 	 * @return string Remote URL if offloaded.
-	 */
-	public function filter_attachment_url($url, $attachment_id) {
-		$is_offloaded = get_post_meta($attachment_id, '_filechi_offloaded', true);
-		if (!$is_offloaded) {
+	 */	public function filter_attachment_url($url, $attachment_id) {
+		try {
+			$is_offloaded = get_post_meta($attachment_id, '_filechi_offloaded', true);
+			if (!$is_offloaded) {
+				return $url;
+			}
+
+			$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
+			if (empty($attached_file)) {
+				return $url;
+			}
+
+			$provider_id = get_post_meta($attachment_id, '_filechi_provider_id', true);
+			$driver      = FileChi_Storage_Factory::create($provider_id ?: FileChi_DB::get_default_provider());
+
+			if (!$driver) {
+				return $url;
+			}
+
+			// Never expose permanent public URLs for protected WooCommerce downloads
+			if (self::is_protected_file($attached_file)) {
+				return $driver->get_signed_url($attached_file);
+			}
+
+			return $driver->get_url($attached_file);
+		} catch (FileChi_Path_Exception $e) {
+			FileChi_Path::log_error($attached_file ?? '', $e->getMessage());
+			return $url;
+		} catch (\Exception $e) {
 			return $url;
 		}
-
-		$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
-		if (empty($attached_file)) {
-			return $url;
-		}
-
-		$provider_id = get_post_meta($attachment_id, '_filechi_provider_id', true);
-		$driver      = FileChi_Storage_Factory::create($provider_id ?: FileChi_DB::get_default_provider());
-
-		if (!$driver) {
-			return $url;
-		}
-
-		// Never expose permanent public URLs for protected WooCommerce downloads
-		if (self::is_protected_file($attached_file)) {
-			return $driver->get_signed_url($attached_file);
-		}
-
-		return $driver->get_url($attached_file);
 	}
 
 	/**
 	 * Filters image srcset candidate URLs so all responsive image sizes point to remote storage.
 	 *
 	 * @param array|false $sources Sources array or false.
-	 * @param array  $size_array Size array.
-	 * @param string $image_src Image source URL.
-	 * @param array  $image_meta Image metadata.
-	 * @param int    $attachment_id Attachment ID.
+	 * @param array       $size_array Size array.
+	 * @param string      $image_src Image source URL.
+	 * @param array       $image_meta Image metadata.
+	 * @param int         $attachment_id Attachment ID.
 	 * @return array Modified sources.
 	 */
 	public function filter_image_srcset($sources, $size_array, $image_src, $image_meta, $attachment_id) {
-		$is_offloaded = get_post_meta($attachment_id, '_filechi_offloaded', true);
-		if (!$is_offloaded || !is_array($sources)) {
+		try {
+			$is_offloaded = get_post_meta($attachment_id, '_filechi_offloaded', true);
+			if (!$is_offloaded || !is_array($sources)) {
+				return $sources;
+			}
+
+			$provider_id = get_post_meta($attachment_id, '_filechi_provider_id', true);
+			$driver      = FileChi_Storage_Factory::create($provider_id ?: FileChi_DB::get_default_provider());
+
+			if (!$driver) {
+				return $sources;
+			}
+
+			$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
+			$dir_prefix    = dirname($attached_file);
+			$dir_prefix    = ($dir_prefix === '.' || $dir_prefix === '/') ? '' : $dir_prefix . '/';
+
+			foreach ($sources as &$source) {
+				// Extract filename from URL
+				$parsed_path = wp_parse_url($source['url'], PHP_URL_PATH);
+				$filename    = basename((string) $parsed_path);
+				$rel_path    = $dir_prefix . $filename;
+				try {
+					$source['url'] = $driver->get_url($rel_path);
+				} catch (FileChi_Path_Exception $e) {
+					FileChi_Path::log_error($rel_path, $e->getMessage());
+				}
+			}
+
+			return $sources;
+		} catch (FileChi_Path_Exception $e) {
+			FileChi_Path::log_error($attached_file ?? '', $e->getMessage());
+			return $sources;
+		} catch (\Exception $e) {
 			return $sources;
 		}
-
-		$provider_id = get_post_meta($attachment_id, '_filechi_provider_id', true);
-		$driver      = FileChi_Storage_Factory::create($provider_id ?: FileChi_DB::get_default_provider());
-
-		if (!$driver) {
-			return $sources;
-		}
-
-		$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
-		$dir_prefix    = dirname($attached_file);
-		$dir_prefix    = ($dir_prefix === '.' || $dir_prefix === '/') ? '' : $dir_prefix . '/';
-
-		foreach ($sources as &$source) {
-			// Extract filename from URL
-			$filename = basename(wp_parse_url($source['url'], PHP_URL_PATH));
-			$rel_path = $dir_prefix . $filename;
-			$source['url'] = $driver->get_url($rel_path);
-		}
-
-		return $sources;
 	}
 
 	/**
@@ -528,30 +546,43 @@ class FileChi_Media {
 	 * @return array|false
 	 */
 	public function filter_attachment_image_src($image, $attachment_id, $size, $icon) {
-		if (!is_array($image) || empty($image[0])) {
+		try {
+			if (!is_array($image) || empty($image[0])) {
+				return $image;
+			}
+
+			$is_offloaded = get_post_meta($attachment_id, '_filechi_offloaded', true);
+			if (!$is_offloaded) {
+				return $image;
+			}
+
+			$provider_id = get_post_meta($attachment_id, '_filechi_provider_id', true);
+			$driver      = FileChi_Storage_Factory::create($provider_id ?: FileChi_DB::get_default_provider());
+
+			if (!$driver) {
+				return $image;
+			}
+
+			$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
+			$dir_prefix    = dirname($attached_file);
+			$dir_prefix    = ($dir_prefix === '.' || $dir_prefix === '/') ? '' : $dir_prefix . '/';
+
+			$parsed_path = wp_parse_url($image[0], PHP_URL_PATH);
+			$filename    = basename((string) $parsed_path);
+			$rel_path    = $dir_prefix . $filename;
+			try {
+				$image[0] = $driver->get_url($rel_path);
+			} catch (FileChi_Path_Exception $e) {
+				FileChi_Path::log_error($rel_path, $e->getMessage());
+			}
+
+			return $image;
+		} catch (FileChi_Path_Exception $e) {
+			FileChi_Path::log_error($attached_file ?? '', $e->getMessage());
+			return $image;
+		} catch (\Exception $e) {
 			return $image;
 		}
-
-		$is_offloaded = get_post_meta($attachment_id, '_filechi_offloaded', true);
-		if (!$is_offloaded) {
-			return $image;
-		}
-
-		$provider_id = get_post_meta($attachment_id, '_filechi_provider_id', true);
-		$driver      = FileChi_Storage_Factory::create($provider_id ?: FileChi_DB::get_default_provider());
-
-		if (!$driver) {
-			return $image;
-		}
-
-		$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
-		$dir_prefix    = dirname($attached_file);
-		$dir_prefix    = ($dir_prefix === '.' || $dir_prefix === '/') ? '' : $dir_prefix . '/';
-
-		$filename = basename(wp_parse_url($image[0], PHP_URL_PATH));
-		$image[0] = $driver->get_url($dir_prefix . $filename);
-
-		return $image;
 	}
 
 	/**

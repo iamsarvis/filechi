@@ -58,6 +58,16 @@ class Mock_Storage_Driver {
 	public function get_size($remote_path) {
 		return -1;
 	}
+
+	public function get_url($remote_path) {
+		$clean = FileChi_Path::validate($remote_path);
+		return 'https://remote.cdn.com/' . $clean;
+	}
+
+	public function get_signed_url($remote_path, $expires = 900) {
+		$clean = FileChi_Path::validate($remote_path);
+		return 'https://remote.cdn.com/signed/' . $clean;
+	}
 }
 
 class FileChi_Storage_Factory {
@@ -203,5 +213,66 @@ foreach ($all_rels as $rel) {
 }
 @rmdir($temp_upload_dir . '/2026/10');
 @rmdir($temp_upload_dir);
+
+echo "\n=== 4. Front-End Safety on Invalid Stored Paths (Item 5.6) ===\n";
+
+$media    = new FileChi_Media();
+$bad_path = "2026/10\\bad//image.jpg "; // backslash, double slash, trailing space
+
+$bad_aid = 401;
+update_post_meta($bad_aid, '_wp_attached_file', $bad_path);
+update_post_meta($bad_aid, '_filechi_offloaded', 1);
+update_post_meta($bad_aid, '_filechi_provider_id', 1);
+
+// Test 4.1: filter_attachment_url with bad path
+$orig_url = 'https://example.com/wp-content/uploads/2026/10/bad/image.jpg';
+$res_url  = $media->filter_attachment_url($orig_url, $bad_aid);
+echo "[+] filter_attachment_url returned original URL on invalid key: " . ($res_url === $orig_url ? 'PASS' : 'FAIL') . "\n";
+assert($res_url === $orig_url, 'filter_attachment_url must return original URL on invalid key');
+
+// Test 4.2: filter_image_srcset with bad path
+$orig_sources = array(
+	300 => array(
+		'url'        => 'https://example.com/wp-content/uploads/2026/10/bad/image-300x200.jpg',
+		'descriptor' => 'w',
+		'value'      => 300,
+	),
+);
+$res_srcset = $media->filter_image_srcset($orig_sources, array(300, 200), $orig_url, array(), $bad_aid);
+echo "[+] filter_image_srcset preserved original URLs on invalid key: " . ($res_srcset[300]['url'] === $orig_sources[300]['url'] ? 'PASS' : 'FAIL') . "\n";
+assert($res_srcset[300]['url'] === $orig_sources[300]['url'], 'filter_image_srcset must preserve original URL on invalid key');
+
+// Test 4.3: filter_attachment_image_src with bad path
+$orig_image = array('https://example.com/wp-content/uploads/2026/10/bad/image-150x150.jpg', 150, 150, true);
+$res_image  = $media->filter_attachment_image_src($orig_image, $bad_aid, 'thumbnail', false);
+echo "[+] filter_attachment_image_src preserved original image URL on invalid key: " . ($res_image[0] === $orig_image[0] ? 'PASS' : 'FAIL') . "\n";
+assert($res_image[0] === $orig_image[0], 'filter_attachment_image_src must preserve original image on invalid key');
+
+// Test 4.4: Every driver get_url() and get_signed_url() with invalid key
+require_once FILECHI_DIR . 'includes/storage/interface-filechi-storage.php';
+require_once FILECHI_DIR . 'includes/storage/class-filechi-storage-sftp.php';
+require_once FILECHI_DIR . 'includes/storage/class-filechi-storage-ftps.php';
+require_once FILECHI_DIR . 'includes/storage/class-filechi-storage-s3.php';
+
+$sftp_driver = new FileChi_Storage_SFTP(array('host' => 'localhost', 'username' => 'u', 'root_path' => '/uploads'));
+$sftp_url    = $sftp_driver->get_url($bad_path);
+$sftp_signed = $sftp_driver->get_signed_url($bad_path);
+assert(!empty($sftp_url), 'SFTP get_url must not fatal on invalid key');
+assert(!empty($sftp_signed), 'SFTP get_signed_url must not fatal on invalid key');
+echo "[+] SFTP driver get_url & get_signed_url safely returned fallback: PASS\n";
+
+$ftps_driver = new FileChi_Storage_FTPS(array('host' => 'localhost', 'username' => 'u', 'root_path' => '/uploads'));
+$ftps_url    = $ftps_driver->get_url($bad_path);
+$ftps_signed = $ftps_driver->get_signed_url($bad_path);
+assert(!empty($ftps_url), 'FTPS get_url must not fatal on invalid key');
+assert(!empty($ftps_signed), 'FTPS get_signed_url must not fatal on invalid key');
+echo "[+] FTPS driver get_url & get_signed_url safely returned fallback: PASS\n";
+
+$s3_driver = new FileChi_Storage_S3(array('endpoint' => 'https://s3.example.com', 'bucket' => 'test-bucket', 'access_key' => 'AK', 'secret_key' => 'SK'));
+$s3_url    = $s3_driver->get_url($bad_path);
+$s3_signed = $s3_driver->get_signed_url($bad_path);
+assert(!empty($s3_url), 'S3 get_url must not fatal on invalid key');
+assert(!empty($s3_signed), 'S3 get_signed_url must not fatal on invalid key');
+echo "[+] S3 driver get_url & get_signed_url safely returned fallback: PASS\n";
 
 echo "\nALL MEDIA OFFLOAD SAFETY TESTS PASSED!\n";

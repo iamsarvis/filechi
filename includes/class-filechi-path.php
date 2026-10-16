@@ -150,4 +150,32 @@ class FileChi_Path {
 			return false;
 		}
 	}
+
+	/**
+	 * Recorded hashes of path errors already logged in the current request.
+	 *
+	 * @var array<string, bool>
+	 */
+	private static $logged_errors = array();
+
+	/**
+	 * Logs a path validation failure once per key per request.
+	 *
+	 * @param mixed  $key The invalid path or key.
+	 * @param string $message The exception error message.
+	 */
+	public static function log_error($key, $message) {
+		$hash = md5((string) $key);
+		if (!isset(self::$logged_errors[$hash])) {
+			self::$logged_errors[$hash] = true;
+			error_log(sprintf('FileChi: Invalid remote storage path encountered: "%s". Error: %s', (string) $key, $message));
+		}
+	}
+
+	/**
+	 * Clears logged errors record (useful for unit tests).
+	 */
+	public static function reset_logged_errors() {
+		self::$logged_errors = array();
+	}
 }
