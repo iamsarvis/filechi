@@ -22,7 +22,6 @@ class FileChi_WooCommerce {
 
 		// Hook downloadable product file resolution
 		add_filter('woocommerce_file_download_path', array($this, 'filter_download_path'), 20, 3);
-		add_filter('woocommerce_customer_get_downloadable_products', array($this, 'filter_customer_downloadable_products'), 20, 1);
 	}
 
 	/**
@@ -40,6 +39,10 @@ class FileChi_WooCommerce {
 
 	/**
 	 * Resolves WooCommerce downloadable product paths to signed, time-limited remote URLs.
+	 *
+	 * Maps the path to an attachment (_wp_attached_file). If _filechi_offloaded is not 1,
+	 * returns the original path unchanged. If offloaded, uses that attachment's provider
+	 * (_filechi_provider_id), not the default one.
 	 *
 	 * @param string      $file_path Configured file URL/path.
 	 * @param int         $product_id Product ID.
@@ -63,7 +66,22 @@ class FileChi_WooCommerce {
 			return $file_path;
 		}
 
-		$provider = FileChi_DB::get_default_provider();
+		$attachment_id = $this->get_attachment_id_by_key($relative_key);
+		if (!$attachment_id) {
+			return $file_path;
+		}
+
+		$is_offloaded = (int) get_post_meta($attachment_id, '_filechi_offloaded', true);
+		if ($is_offloaded !== 1) {
+			return $file_path;
+		}
+
+		$provider_id = (int) get_post_meta($attachment_id, '_filechi_provider_id', true);
+		if (!$provider_id) {
+			return $file_path;
+		}
+
+		$provider = FileChi_DB::get_provider($provider_id);
 		if (!$provider) {
 			return $file_path;
 		}
@@ -73,19 +91,36 @@ class FileChi_WooCommerce {
 			return $file_path;
 		}
 
-		// Return time-limited signed download URL
-		return $driver->get_signed_url($relative_key, $expiry);
+		try {
+			// Return time-limited signed download URL
+			return $driver->get_signed_url($relative_key, $expiry);
+		} catch (\Exception $e) {
+			return $file_path;
+		}
 	}
 
 	/**
-	 * Filters downloadable product links in the user account / order view.
+	 * Finds an attachment ID by its relative file key (_wp_attached_file).
 	 *
-	 * @param array $downloads List of downloadable products.
-	 * @return array
+	 * @param string $relative_key
+	 * @return int Attachment ID or 0 if not found.
 	 */
-	public function filter_customer_downloadable_products($downloads) {
-		// Handled at generation time via filter_download_path so signatures stay fresh
-		return $downloads;
+	private function get_attachment_id_by_key($relative_key) {
+		global $wpdb;
+
+		if (!isset($wpdb) || !is_object($wpdb)) {
+			return 0;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe core postmeta table interpolation.
+		$attachment_id = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value = %s LIMIT 1",
+				$relative_key
+			)
+		);
+
+		return $attachment_id ? (int) $attachment_id : 0;
 	}
 
 	/**

@@ -122,7 +122,7 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 				$prot_root = rtrim(str_replace('\\', '/', $prot_root), '/');
 				return $prot_root . '/' . $remote_path;
 			}
-			throw new RuntimeException(__('Protected file cannot be stored: SFTP provider has no protected_path configured.', 'filechi'));
+			throw new RuntimeException(esc_html__('Protected file cannot be stored: SFTP provider has no protected_path configured.', 'filechi'));
 		}
 
 		$root = trim((string) ($this->settings['root_path'] ?? ''));
