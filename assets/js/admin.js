@@ -27,6 +27,50 @@
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 	}
 
+	// Reusable Trust Server Public Key Dialog (FTPS & SFTP)
+	function TrustKeyDialog({ title, rows, onTrust, onCancel }) {
+		return el(Modal, {
+			title: title || 'Trust Remote Server Public Key',
+			onRequestClose: onCancel,
+			className: 'filechi-trust-key-modal',
+			style: { maxWidth: 620 },
+		},
+			el('div', { style: { padding: '10px 0' } },
+				el(Notice, {
+					status: 'warning',
+					isDismissible: false,
+					style: { marginBottom: 16 },
+				}, "The remote server's certificate is not trusted by the CA authorities (it may be self-signed or reached directly by IP address). Review the key details below and trust its public key once to pin it and allow secure connections."),
+
+				el('table', { className: 'filechi-table', style: { marginTop: 0, marginBottom: 20 } },
+					el('tbody', null,
+						rows.map((row, idx) => el('tr', { key: idx },
+							el('th', { style: { width: '32%', fontWeight: 600, color: '#1d2327' } }, row.label),
+							el('td', { style: { wordBreak: 'break-all', fontFamily: row.isMono ? 'monospace' : 'inherit' } }, row.value || '—')
+						))
+					)
+				),
+
+				el('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+					el(Button, {
+						variant: 'secondary',
+						onClick: (e) => {
+							if (e && e.stopPropagation) e.stopPropagation();
+							onCancel(e);
+						},
+					}, 'Cancel'),
+					el(Button, {
+						variant: 'primary',
+						onClick: (e) => {
+							if (e && e.stopPropagation) e.stopPropagation();
+							onTrust(e);
+						},
+					}, 'Trust this key')
+				)
+			)
+		);
+	}
+
 	// Main App Component
 	function FileChiAdminApp() {
 		const [activeTab, setActiveTab] = useState('connections');
@@ -43,6 +87,7 @@
 		const [testResult, setTestResult] = useState(null);
 		const [isTesting, setIsTesting] = useState(false);
 		const [isSaving, setIsSaving] = useState(false);
+		const [trustDialogData, setTrustDialogData] = useState(null);
 
 		// Logs filter state
 		const [logFilterStatus, setLogFilterStatus] = useState('');
@@ -114,6 +159,7 @@
 		// Open Provider Modal (Create / Edit)
 		function openProviderModal(provider = null) {
 			setTestResult(null);
+			setTrustDialogData(null);
 			if (provider) {
 				setEditingProvider({
 					id: provider.id,
@@ -139,6 +185,7 @@
 						protected_path: '',
 						base_url: '',
 						timeout: 30,
+						tls_pin: '',
 						// S3 fields
 						provider_type: 'custom',
 						endpoint: '',
@@ -196,22 +243,32 @@
 		}
 
 		// Test Connection against unsaved form inputs
-		async function handleTestConnection() {
+		async function handleTestConnection(customSettings = null, initialMessage = null) {
 			setIsTesting(true);
-			setTestResult(null);
+			setTestResult({
+				isTesting: true,
+				message: initialMessage || 'Testing connection…',
+			});
+
+			const currentSettings = customSettings || (editingProvider ? editingProvider.settings : {});
 
 			try {
 				const res = await apiFetch({
 					path: '/filechi/v1/test-connection',
 					method: 'POST',
 					data: {
-						id: editingProvider.id || null,
-						driver: editingProvider.driver,
-						settings: editingProvider.settings,
+						id: (editingProvider && editingProvider.id) || null,
+						driver: (editingProvider && editingProvider.driver) || 'ftps',
+						settings: currentSettings,
 					},
 				});
 
-				setTestResult(res);
+				if (res && res.needs_trust) {
+					setTrustDialogData(res);
+					setTestResult(null);
+				} else {
+					setTestResult(res);
+				}
 			} catch (err) {
 				setTestResult({
 					success: false,
@@ -220,6 +277,49 @@
 			} finally {
 				setIsTesting(false);
 			}
+		}
+
+		// Trust Key Dialog handlers
+		function handleTrustKey(e) {
+			if (e && e.stopPropagation) {
+				e.stopPropagation();
+			}
+			if (!trustDialogData || !trustDialogData.fingerprint) {
+				setTrustDialogData(null);
+				return;
+			}
+			const pin = trustDialogData.fingerprint;
+			const currentProv = editingProvider || {};
+			const updatedSettings = Object.assign({}, currentProv.settings || {}, { tls_pin: pin });
+			const updatedProvider = Object.assign({}, currentProv, { settings: updatedSettings });
+
+			// 1. Store the pin directly in editing state
+			setEditingProvider(updatedProvider);
+
+			// 2. Only trust dialog closes; Edit modal stays open
+			setTrustDialogData(null);
+			setIsModalOpen(true);
+
+			// 3. Show intermediate notice inside Edit modal
+			setTestResult({
+				isTesting: true,
+				message: 'Pin saved — testing connection…',
+			});
+
+			// 4. Use new value directly when re-running test without waiting for React state commit
+			handleTestConnection(updatedSettings, 'Pin saved — testing connection…');
+		}
+
+		function handleCancelTrust(e) {
+			if (e && e.stopPropagation) {
+				e.stopPropagation();
+			}
+			setTrustDialogData(null);
+			setIsModalOpen(true);
+			setTestResult({
+				success: false,
+				message: 'Remote public key was not trusted. Connection refused.',
+			});
 		}
 
 		// Save Provider
@@ -396,7 +496,23 @@
 			}),
 
 			// Provider Edit/Create Modal
-			isModalOpen && renderProviderModal()
+			isModalOpen && renderProviderModal(),
+
+			// Trust Server Public Key Dialog (FTPS & SFTP)
+			trustDialogData && el(TrustKeyDialog, {
+				title: 'Trust FTPS Server Public Key',
+				rows: [
+					{ label: 'Subject', value: trustDialogData.subject },
+					{ label: 'Issuer', value: trustDialogData.issuer },
+					{ label: 'Algorithm', value: trustDialogData.algorithm },
+					{ label: 'Fingerprint (Pin)', value: trustDialogData.fingerprint, isMono: true },
+					{ label: 'Valid From', value: trustDialogData.valid_from },
+					{ label: 'Valid To', value: trustDialogData.valid_to },
+					...(trustDialogData.san ? [{ label: 'Alternative Names (SAN)', value: trustDialogData.san }] : []),
+				],
+				onTrust: handleTrustKey,
+				onCancel: handleCancelTrust,
+			})
 		);
 
 		// Render Tab 1: Connections
@@ -923,7 +1039,7 @@
 							status: 'warning',
 							isDismissible: false,
 							style: { marginBottom: 15 },
-						}, "FTPS verifies the server's TLS certificate against the standard certificate authorities. Use the host name that appears on the certificate. Servers with self-signed certificates are not supported yet."),
+						}, "FTPS verifies the server certificate. For a server reached by IP address or with a self-signed certificate, trust its public key once: it is pinned and any later change is refused."),
 						el(TextControl, {
 							label: 'FTPS Host / IP',
 							value: s.host || '',
@@ -936,6 +1052,21 @@
 							value: s.port || 21,
 							onChange: (val) => updateSettingField('port', val),
 						}),
+						!!s.tls_pin && el('div', {
+							className: 'filechi-pin-box',
+							style: { background: '#f6f7f7', border: '1px solid #dcdcde', borderRadius: 4, padding: '10px 14px', marginBottom: 16 },
+						},
+							el('label', { style: { display: 'block', fontWeight: 600, fontSize: 13, marginBottom: 4 } }, 'Pinned Public Key Fingerprint (TLS Pin)'),
+							el('code', { style: { display: 'block', wordBreak: 'break-all', fontSize: 12, marginBottom: 8, color: '#0969da' } }, s.tls_pin),
+							el(Button, {
+								isDestructive: true,
+								isSmall: true,
+								onClick: () => {
+									updateSettingField('tls_pin', '');
+									setTestResult(null);
+								},
+							}, 'Reset trusted key')
+						),
 						el(TextControl, {
 							label: 'Username',
 							value: s.username || '',
@@ -982,9 +1113,50 @@
 					}),
 
 					// Test Result Notice
-					testResult && el('div', {
-						className: `filechi-test-result ${testResult.success ? 'success' : 'error'}`,
-					}, testResult.message),
+					testResult && (() => {
+						if (testResult.isTesting) {
+							return el('div', {
+								className: 'filechi-test-result is-testing',
+								style: {
+									background: '#f0f6fc',
+									borderLeft: '4px solid #0969da',
+									color: '#0969da',
+								},
+							},
+								el('span', { className: 'dashicons dashicons-update', style: { marginRight: 8, verticalAlign: 'text-bottom' } }),
+								testResult.message || 'Testing connection…'
+							);
+						}
+
+						const isMismatch = (
+							(testResult.message && testResult.message.indexOf('PINNED KEY MISMATCH') !== -1) ||
+							(testResult.details && testResult.details.curl_errno === 90)
+						);
+						return el('div', {
+							className: `filechi-test-result ${testResult.success ? 'success' : 'error'}${isMismatch ? ' is-mismatch' : ''}`,
+							style: isMismatch ? {
+								background: '#fef2f2',
+								borderLeft: '4px solid #dc2626',
+								color: '#991b1b',
+								fontWeight: 600,
+							} : undefined,
+						},
+							isMismatch && el('span', { className: 'dashicons dashicons-warning', style: { marginRight: 8, color: '#dc2626', verticalAlign: 'text-bottom' } }),
+							el('div', { style: { marginBottom: (testResult.stages && testResult.stages.length) ? 8 : 0 } }, testResult.message),
+							(testResult.stages && Array.isArray(testResult.stages)) && el('ul', {
+								className: 'filechi-stage-checklist',
+							},
+								testResult.stages.map((stg, sIdx) => el('li', {
+									key: sIdx,
+									className: `filechi-stage-item ${stg.ok ? 'is-ok' : 'is-fail'}`,
+								},
+									el('span', { style: { fontWeight: 'bold', width: 14 } }, stg.ok ? '✓' : '✗'),
+									el('strong', null, stg.name + ':'),
+									el('span', { style: { color: '#374151', marginLeft: 4 } }, stg.detail)
+								))
+							)
+						);
+					})(),
 
 					// Modal Actions
 					el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 24 } },
@@ -992,7 +1164,7 @@
 							variant: 'secondary',
 							isBusy: isTesting,
 							disabled: isTesting,
-							onClick: handleTestConnection,
+							onClick: () => handleTestConnection(),
 						}, isTesting ? 'Testing Connection...' : '⚡ Test Connection'),
 
 						el('div', { style: { display: 'flex', gap: 10 } },
@@ -1014,6 +1186,9 @@
 
 		function updateSettingField(key, val) {
 			const s = Object.assign({}, editingProvider.settings, { [key]: val });
+			if ((key === 'host' || key === 'port') && editingProvider && editingProvider.settings && editingProvider.settings.tls_pin) {
+				s.tls_pin = '';
+			}
 			setEditingProvider(Object.assign({}, editingProvider, { settings: s }));
 		}
 	}

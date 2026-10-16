@@ -185,6 +185,13 @@ class FileChi_REST extends WP_REST_Controller {
 			return new WP_Error('invalid_data', __('Provider name and driver are required.', 'filechi'), array('status' => 400));
 		}
 
+		if ($params['driver'] === 'ftps' && !empty($params['settings']['tls_pin'])) {
+			require_once dirname(__FILE__) . '/storage/class-filechi-storage-ftps.php';
+			if (!FileChi_Storage_FTPS::is_valid_tls_pin($params['settings']['tls_pin'])) {
+				return new WP_Error('invalid_tls_pin', __('Invalid TLS pin format. Expected format: sha256// followed by 44 base64 characters.', 'filechi'), array('status' => 400));
+			}
+		}
+
 		$id = FileChi_DB::insert_provider($params);
 		if (is_wp_error($id)) {
 			return $id;
@@ -205,6 +212,32 @@ class FileChi_REST extends WP_REST_Controller {
 	public function update_provider($request) {
 		$id     = absint($request->get_param('id'));
 		$params = $request->get_json_params();
+
+		$target_driver = sanitize_key($params['driver'] ?? '');
+		if (!$target_driver) {
+			$existing_record = FileChi_DB::get_provider($id, false);
+			$target_driver   = $existing_record['driver'] ?? '';
+		}
+
+		$existing_record = FileChi_DB::get_provider($id, true);
+		if ($existing_record && !empty($existing_record['settings']['tls_pin'])) {
+			$old_host = (string) ($existing_record['settings']['host'] ?? '');
+			$old_port = isset($existing_record['settings']['port']) ? (string) $existing_record['settings']['port'] : '';
+			$new_host = isset($params['settings']['host']) ? (string) $params['settings']['host'] : $old_host;
+			$new_port = isset($params['settings']['port']) ? (string) $params['settings']['port'] : $old_port;
+			if ($old_host !== $new_host || $old_port !== $new_port) {
+				if (isset($params['settings']) && is_array($params['settings'])) {
+					$params['settings']['tls_pin'] = '';
+				}
+			}
+		}
+
+		if ($target_driver === 'ftps' && isset($params['settings']['tls_pin']) && trim((string) $params['settings']['tls_pin']) !== '') {
+			require_once dirname(__FILE__) . '/storage/class-filechi-storage-ftps.php';
+			if (!FileChi_Storage_FTPS::is_valid_tls_pin($params['settings']['tls_pin'])) {
+				return new WP_Error('invalid_tls_pin', __('Invalid TLS pin format. Expected format: sha256// followed by 44 base64 characters.', 'filechi'), array('status' => 400));
+			}
+		}
 
 		$success = FileChi_DB::update_provider($id, $params);
 		if (is_wp_error($success)) {
@@ -289,6 +322,11 @@ class FileChi_REST extends WP_REST_Controller {
 
 			case 'ftps':
 				require_once dirname(__FILE__) . '/storage/class-filechi-storage-ftps.php';
+				if (isset($settings['tls_pin']) && trim((string) $settings['tls_pin']) !== '') {
+					if (!FileChi_Storage_FTPS::is_valid_tls_pin($settings['tls_pin'])) {
+						return new WP_Error('invalid_tls_pin', __('Invalid TLS pin format. Expected format: sha256// followed by 44 base64 characters.', 'filechi'), array('status' => 400));
+					}
+				}
 				$driver = new FileChi_Storage_FTPS($settings);
 				break;
 
