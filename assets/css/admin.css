@@ -339,3 +339,32 @@
 	margin-bottom: 16px;
 }
 
+.filechi-test-result.is-testing {
+	background: #f0f6fc;
+	color: #0969da;
+	border-left: 4px solid #0969da;
+}
+
+.filechi-stage-checklist {
+	margin: 10px 0 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.filechi-stage-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	margin-top: 4px;
+	font-family: monospace;
+}
+
+.filechi-stage-item.is-ok {
+	color: #1e4620;
+}
+
+.filechi-stage-item.is-fail {
+	color: #9b1c1c;
+}
+
