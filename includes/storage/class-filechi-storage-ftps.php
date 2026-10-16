@@ -928,9 +928,10 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_FTP | CURLPROTO_FTPS);
 		}
 		curl_setopt($ch, CURLOPT_CONNECT_ONLY, 1);
-		if ($ftps_mode === 'explicit') {
-			curl_setopt($ch, CURLOPT_USE_SSL, CURLUSESSL_NONE);
-		}
+		// In Stage 1: verify control channel reachability (allow TLS negotiation if server requires it on control channel)
+		curl_setopt($ch, CURLOPT_USE_SSL, defined('CURLUSESSL_TRY') ? CURLUSESSL_TRY : 1);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
 		curl_setopt($ch, CURLOPT_TIMEOUT, 10);
 		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
 
@@ -940,7 +941,8 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 		$response_code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 		curl_close($ch);
 
-		if ($res === false) {
+		// Control channel failed if network / socket connection failed
+		if ($res === false && ($errno === 7 || $errno === 28 || $errno === 6)) {
 			$detail = sprintf(
 				/* translators: 1: Host, 2: Port, 3: Error */
 				esc_html__('Failed to connect to %1$s:%2$d (control channel): %3$s', 'filechi'),
@@ -1005,6 +1007,13 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 		if ($ftps_mode === 'explicit') {
 			curl_setopt($ch, CURLOPT_USE_SSL, defined('CURLUSESSL_ALL') ? CURLUSESSL_ALL : 3);
 		}
+
+		$username = (string) ($this->settings['username'] ?? '');
+		$password = (string) ($this->settings['password'] ?? '');
+		if ($username !== '' || $password !== '') {
+			curl_setopt($ch, CURLOPT_USERPWD, "{$username}:{$password}");
+		}
+
 		if ($tls_pin !== '' && defined('CURLOPT_PINNEDPUBLICKEY')) {
 			curl_setopt($ch, CURLOPT_PINNEDPUBLICKEY, $tls_pin);
 			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -1021,6 +1030,11 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 		$error         = curl_error($ch);
 		$response_code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 		curl_close($ch);
+
+		// If cURL progressed to login rejection (67 / 530), TLS handshake and pin check succeeded
+		if ($res === false && ($errno === 67 || $response_code === 530)) {
+			$res = true;
+		}
 
 		if ($res === false) {
 			// If no pin is configured and verification failed (self-signed / IP access), discover cert
