@@ -13,10 +13,24 @@ require_once FILECHI_DIR . 'includes/class-filechi-media.php';
 echo "=== 1. is_protected_file Detection ===\n";
 $is_prot1 = FileChi_Media::is_protected_file('woocommerce_uploads/2026/10/product-file.zip');
 $is_prot2 = FileChi_Media::is_protected_file('2026/10/normal-image.jpg');
+$is_prot3 = FileChi_Media::is_protected_file('2026/10/my-woocommerce_uploads/x.jpg');
+$is_prot4 = FileChi_Media::is_protected_file('woocommerce_uploads_extra/x.jpg');
+$is_prot5 = FileChi_Media::is_protected_file('/woocommerce_uploads/2026/10/product-file.zip');
+$is_prot6 = FileChi_Media::is_protected_file('\\woocommerce_uploads\\2026\\10\\product-file.zip');
+
 echo "woocommerce_uploads/ file detected as protected: " . ($is_prot1 ? 'PASS' : 'FAIL') . "\n";
 echo "normal-image.jpg detected as not protected: " . (!$is_prot2 ? 'PASS' : 'FAIL') . "\n";
+echo "2026/10/my-woocommerce_uploads/x.jpg detected as not protected: " . (!$is_prot3 ? 'PASS' : 'FAIL') . "\n";
+echo "woocommerce_uploads_extra/x.jpg detected as not protected: " . (!$is_prot4 ? 'PASS' : 'FAIL') . "\n";
+echo "/woocommerce_uploads/... detected as protected: " . ($is_prot5 ? 'PASS' : 'FAIL') . "\n";
+echo "\\woocommerce_uploads\\... detected as protected: " . ($is_prot6 ? 'PASS' : 'FAIL') . "\n";
+
 assert($is_prot1 === true);
 assert($is_prot2 === false);
+assert($is_prot3 === false, 'Mid-string woocommerce_uploads must NOT be treated as protected');
+assert($is_prot4 === false, 'woocommerce_uploads_extra must NOT be treated as protected');
+assert($is_prot5 === true);
+assert($is_prot6 === true);
 
 echo "\n=== 2. Path Resolution (SFTP & FTPS) ===\n";
 $sftp = new FileChi_Storage_SFTP(array(
@@ -127,7 +141,7 @@ if (!class_exists('FileChi_DB')) {
 $files_to_offload = array('woocommerce_uploads/2026/10/file.zip' => 'c:/temp/uploads/woocommerce_uploads/2026/10/file.zip');
 $has_protected    = false;
 foreach ($files_to_offload as $rel_path => $abs_path) {
-	if (FileChi_Media::is_protected_file($rel_path, 10)) {
+	if (FileChi_Media::is_protected_file($rel_path)) {
 		$has_protected = true;
 		break;
 	}

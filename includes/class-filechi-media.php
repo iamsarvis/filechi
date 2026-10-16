@@ -204,7 +204,7 @@ class FileChi_Media {
 		// Guard: If any file is protected and provider is SFTP/FTPS without protected_path, refuse offload
 		$has_protected = false;
 		foreach (array_keys($files_to_process) as $rel_path) {
-			if (self::is_protected_file($rel_path, $attachment_id)) {
+			if (self::is_protected_file($rel_path)) {
 				$has_protected = true;
 				break;
 			}
@@ -436,15 +436,16 @@ class FileChi_Media {
 	/**
 	 * Determines whether a file/attachment is protected (e.g. WooCommerce downloadable product file).
 	 *
+	 * A file is protected if and only if its normalized relative path starts with woocommerce_uploads/
+	 * (AGENTS.md §7).
+	 *
 	 * @param string $path File path or relative key.
-	 * @param int    $attachment_id Optional attachment post ID.
 	 * @return bool
 	 */
-	public static function is_protected_file($path, $attachment_id = 0) {
-		$clean_path = str_replace('\\', '/', (string) $path);
+	public static function is_protected_file($path) {
+		$clean_path = ltrim(str_replace('\\', '/', (string) $path), '/');
 
-		// Per AGENTS.md §7: a file is protected if and only if its relative path is under woocommerce_uploads/
-		return strpos($clean_path, 'woocommerce_uploads/') !== false || strpos($clean_path, 'woocommerce_uploads') === 0;
+		return strncmp($clean_path, 'woocommerce_uploads/', 20) === 0;
 	}
 
 	/**
@@ -473,7 +474,7 @@ class FileChi_Media {
 		}
 
 		// Never expose permanent public URLs for protected WooCommerce downloads
-		if (self::is_protected_file($attached_file, $attachment_id)) {
+		if (self::is_protected_file($attached_file)) {
 			return $driver->get_signed_url($attached_file);
 		}
 
