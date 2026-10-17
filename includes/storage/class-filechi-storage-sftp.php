@@ -109,29 +109,50 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	 * Resolves and normalizes the full remote path.
 	 * Protects against path traversal attacks.
 	 *
-	 * @param string $remote_path
+	 * @param string $remote_path Relative attachment key, probe file name, or empty string for root.
+	 * @param bool   $is_probe    Whether this is a diagnostic probe file.
 	 * @return string Normalized full remote path.
+	 * @throws FileChi_Path_Exception When root or key fails validation.
+	 * @throws RuntimeException When protected file is targeted without protected_path configured.
 	 */
-	private function resolve_path($remote_path) {
-		$remote_path = FileChi_Path::validate($remote_path);
+	public function resolve_path($remote_path = '', $is_probe = false) {
+		$raw_prot = (string) ($this->settings['protected_path'] ?? '');
+		$raw_root = (string) ($this->settings['root_path'] ?? '');
 
 		// If this is a protected WooCommerce file, route to protected_path (outside web root)
-		if (class_exists('FileChi_Media') && FileChi_Media::is_protected_file($remote_path)) {
-			$prot_root = trim((string) ($this->settings['protected_path'] ?? ''));
-			if (!empty($prot_root)) {
-				$prot_root = rtrim(str_replace('\\', '/', $prot_root), '/');
-				return $prot_root . '/' . $remote_path;
+		$is_protected = false;
+		if ($remote_path !== '' && class_exists('FileChi_Media') && FileChi_Media::is_protected_file($remote_path)) {
+			$is_protected = true;
+		}
+
+		if ($is_protected) {
+			if ($raw_prot === '') {
+				throw new RuntimeException(esc_html__('Protected file cannot be stored: SFTP provider has no protected_path configured.', 'filechi'));
 			}
-			throw new RuntimeException(esc_html__('Protected file cannot be stored: SFTP provider has no protected_path configured.', 'filechi'));
+			$norm_root = FileChi_Path::normalize_root($raw_prot);
+		} else {
+			$norm_root = FileChi_Path::normalize_root($raw_root);
 		}
 
-		$root = trim((string) ($this->settings['root_path'] ?? ''));
-		if (!empty($root)) {
-			$root = rtrim(str_replace('\\', '/', $root), '/');
-			return $root . '/' . $remote_path;
+		if ($remote_path === '') {
+			return $norm_root;
 		}
 
-		return $remote_path;
+		$is_probe_file = $is_probe || (strpos($remote_path, '.filechi-probe') === 0) || (strpos($remote_path, 'filechi-probe') === 0);
+		if ($is_probe_file) {
+			$clean_path = $remote_path;
+		} else {
+			$clean_path = FileChi_Path::validate($remote_path);
+		}
+
+		if ($norm_root === '') {
+			return $clean_path;
+		}
+		if ($norm_root === '/') {
+			return '/' . $clean_path;
+		}
+
+		return $norm_root . '/' . $clean_path;
 	}
 
 	/**
@@ -293,13 +314,23 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 			}
 
 			// Test listing root directory or writing a temporary check
-			$root = trim($this->settings['root_path']);
-			if (!empty($root)) {
-				$clean_root = rtrim(str_replace('\\', '/', $root), '/');
-				if (!$sftp->is_dir($clean_root)) {
+			$root = (string) ($this->settings['root_path'] ?? '');
+			if ($root !== '') {
+				try {
+					$clean_root = $this->resolve_path('');
+				} catch (FileChi_Path_Exception $e) {
 					return array(
 						'success' => false,
-						'message' => sprintf(__('SFTP authentication succeeded, but specified root directory "%s" does not exist or is inaccessible.', 'filechi'), esc_html($root)),
+						'message' => sprintf(esc_html__('Invalid remote root path: %s', 'filechi'), $e->getMessage()),
+						'details' => array(
+							'reason' => 'invalid_root_path',
+						),
+					);
+				}
+				if ($clean_root !== '' && !$sftp->is_dir($clean_root)) {
+					return array(
+						'success' => false,
+						'message' => sprintf(__('SFTP authentication succeeded, but specified root directory "%s" does not exist or is inaccessible.', 'filechi'), esc_html($clean_root)),
 						'details' => null,
 					);
 				}
