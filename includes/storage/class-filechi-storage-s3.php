@@ -394,9 +394,15 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 	 * {@inheritdoc}
 	 */
 	public function get_url($remote_path) {
-		$base_url  = rtrim($this->settings['base_url'], '/');
-		$clean_key = FileChi_Path::validate($remote_path);
+		try {
+			$clean_key = FileChi_Path::validate($remote_path);
+		} catch (FileChi_Path_Exception $e) {
+			FileChi_Path::log_error($remote_path, $e->getMessage());
+			$uploads = wp_upload_dir();
+			return rtrim($uploads['baseurl'], '/') . '/' . ltrim(str_replace('\\', '/', (string) $remote_path), '/');
+		}
 
+		$base_url = rtrim((string) ($this->settings['base_url'] ?? ''), '/');
 		if (!empty($base_url)) {
 			return $base_url . '/' . $clean_key;
 		}
@@ -411,8 +417,15 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 	 * {@inheritdoc}
 	 */
 	public function get_signed_url($remote_path, $expires_in_seconds = 900) {
-		$clean_key = FileChi_Path::validate($remote_path);
-		$target    = $this->build_request_target($clean_key);
+		try {
+			$clean_key = FileChi_Path::validate($remote_path);
+		} catch (FileChi_Path_Exception $e) {
+			FileChi_Path::log_error($remote_path, $e->getMessage());
+			$uploads = wp_upload_dir();
+			return rtrim($uploads['baseurl'], '/') . '/' . ltrim(str_replace('\\', '/', (string) $remote_path), '/');
+		}
+
+		$target = $this->build_request_target($clean_key);
 
 		$url      = $target['url'];
 		$host     = $target['host'];

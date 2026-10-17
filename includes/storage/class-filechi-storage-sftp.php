@@ -117,14 +117,15 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 
 		// If this is a protected WooCommerce file, route to protected_path (outside web root)
 		if (class_exists('FileChi_Media') && FileChi_Media::is_protected_file($remote_path)) {
-			$prot_root = trim($this->settings['protected_path'] ?? '');
+			$prot_root = trim((string) ($this->settings['protected_path'] ?? ''));
 			if (!empty($prot_root)) {
 				$prot_root = rtrim(str_replace('\\', '/', $prot_root), '/');
 				return $prot_root . '/' . $remote_path;
 			}
+			throw new RuntimeException(esc_html__('Protected file cannot be stored: SFTP provider has no protected_path configured.', 'filechi'));
 		}
 
-		$root = trim($this->settings['root_path'] ?? '');
+		$root = trim((string) ($this->settings['root_path'] ?? ''));
 		if (!empty($root)) {
 			$root = rtrim(str_replace('\\', '/', $root), '/');
 			return $root . '/' . $remote_path;
@@ -229,9 +230,15 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	 * {@inheritdoc}
 	 */
 	public function get_url($remote_path) {
-		$base_url   = rtrim($this->settings['base_url'], '/');
-		$clean_path = FileChi_Path::validate($remote_path);
+		try {
+			$clean_path = FileChi_Path::validate($remote_path);
+		} catch (FileChi_Path_Exception $e) {
+			FileChi_Path::log_error($remote_path, $e->getMessage());
+			$uploads = wp_upload_dir();
+			return rtrim($uploads['baseurl'], '/') . '/' . ltrim(str_replace('\\', '/', (string) $remote_path), '/');
+		}
 
+		$base_url = rtrim((string) ($this->settings['base_url'] ?? ''), '/');
 		if (!empty($base_url)) {
 			return $base_url . '/' . $clean_path;
 		}
@@ -245,17 +252,23 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	 * {@inheritdoc}
 	 */
 	public function get_signed_url($remote_path, $expires_in_seconds = 900) {
-		$expires    = time() + absint($expires_in_seconds);
-		$clean_path = FileChi_Path::validate($remote_path);
+		try {
+			$clean_path = FileChi_Path::validate($remote_path);
+		} catch (FileChi_Path_Exception $e) {
+			FileChi_Path::log_error($remote_path, $e->getMessage());
+			$uploads = wp_upload_dir();
+			return rtrim($uploads['baseurl'], '/') . '/' . ltrim(str_replace('\\', '/', (string) $remote_path), '/');
+		}
 
-		$token = hash_hmac('sha256', $clean_path . '|' . $expires, wp_salt('nonce'));
+		$expires = time() + absint($expires_in_seconds);
+		$token   = hash_hmac('sha256', $clean_path . '|' . $expires, wp_salt('nonce'));
 
 		return add_query_arg(
 			array(
-				'filechi_action'   => 'download',
-				'filechi_file'     => rawurlencode($clean_path),
-				'filechi_expires'  => $expires,
-				'filechi_token'    => $token,
+				'filechi_action'  => 'download',
+				'filechi_file'    => rawurlencode($clean_path),
+				'filechi_expires' => $expires,
+				'filechi_token'   => $token,
 			),
 			home_url('/')
 		);

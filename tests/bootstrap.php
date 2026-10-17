@@ -485,6 +485,19 @@ if (!class_exists('Mock_WPDB')) {
 			if (strpos($query, 'SELECT is_default') !== false) {
 				return 0;
 			}
+			if (strpos($query, "meta_key = '_wp_attached_file'") !== false) {
+				if (preg_match("/meta_value = '([^']+)'/", $query, $m)) {
+					$target_file = $m[1];
+					if (isset($GLOBALS['mock_post_meta']) && is_array($GLOBALS['mock_post_meta'])) {
+						foreach ($GLOBALS['mock_post_meta'] as $pid => $meta) {
+							if (isset($meta['_wp_attached_file']) && $meta['_wp_attached_file'] === $target_file) {
+								return $pid;
+							}
+						}
+					}
+				}
+				return 0;
+			}
 			return 0;
 		}
 
