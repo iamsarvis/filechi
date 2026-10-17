@@ -159,6 +159,22 @@ class FileChi_DB {
 			$settings[$k] = $v;
 		}
 
+		// Validate root_path and protected_path if provided
+		if (!empty($settings['root_path'])) {
+			try {
+				$settings['root_path'] = FileChi_Path::normalize_root($settings['root_path']);
+			} catch (FileChi_Path_Exception $e) {
+				return new WP_Error('invalid_root_path', $e->getMessage(), array('status' => 400));
+			}
+		}
+		if (!empty($settings['protected_path'])) {
+			try {
+				$settings['protected_path'] = FileChi_Path::normalize_root($settings['protected_path']);
+			} catch (FileChi_Path_Exception $e) {
+				return new WP_Error('invalid_root_path', $e->getMessage(), array('status' => 400));
+			}
+		}
+
 		// Encrypt credentials before storing
 		$encrypted_settings = self::encrypt_settings($settings);
 		if (is_wp_error($encrypted_settings)) {
@@ -268,6 +284,22 @@ class FileChi_DB {
 			foreach ($submitted as $k => $v) {
 				if (!in_array($k, self::$sensitive_keys, true)) {
 					$merged_settings[$k] = $v;
+				}
+			}
+
+			// Validate root_path and protected_path if provided
+			if (!empty($merged_settings['root_path'])) {
+				try {
+					$merged_settings['root_path'] = FileChi_Path::normalize_root($merged_settings['root_path']);
+				} catch (FileChi_Path_Exception $e) {
+					return new WP_Error('invalid_root_path', $e->getMessage(), array('status' => 400));
+				}
+			}
+			if (!empty($merged_settings['protected_path'])) {
+				try {
+					$merged_settings['protected_path'] = FileChi_Path::normalize_root($merged_settings['protected_path']);
+				} catch (FileChi_Path_Exception $e) {
+					return new WP_Error('invalid_root_path', $e->getMessage(), array('status' => 400));
 				}
 			}
 
