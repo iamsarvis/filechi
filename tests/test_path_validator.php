@@ -180,4 +180,153 @@ foreach ($test_cases as $tc) {
 	assert($is_valid_bool === $expected_bool, "is_valid() for '{$label}' must match {$expected}");
 }
 
-echo "\n" . ($all_passed ? "All FileChi_Path tests passed successfully!" : "Some tests failed!") . "\n";
+echo "\n" . ($all_passed ? "All FileChi_Path key validator tests passed successfully!" : "Some key validator tests failed!") . "\n";
+
+echo "\n=== FileChi_Path::normalize_root() Unit Tests (Item 4b.5) ===\n\n";
+
+$root_test_cases = array(
+	// 1. Absolute root path without trailing slash
+	array(
+		'input'      => '/a/b',
+		'expected'   => 'accepted',
+		'normalized' => '/a/b',
+		'label'      => 'Absolute root without trailing slash (/a/b)',
+	),
+	// 2. Absolute root path with trailing slash (removed)
+	array(
+		'input'      => '/a/b/',
+		'expected'   => 'accepted',
+		'normalized' => '/a/b',
+		'label'      => 'Absolute root with trailing slash (/a/b/)',
+	),
+	// 3. Relative root path without trailing slash
+	array(
+		'input'      => 'a/b',
+		'expected'   => 'accepted',
+		'normalized' => 'a/b',
+		'label'      => 'Relative root without trailing slash (a/b)',
+	),
+	// 4. Relative root path with trailing slash (removed)
+	array(
+		'input'      => 'a/b/',
+		'expected'   => 'accepted',
+		'normalized' => 'a/b',
+		'label'      => 'Relative root with trailing slash (a/b/)',
+	),
+	// 5. Empty root path
+	array(
+		'input'      => '',
+		'expected'   => 'accepted',
+		'normalized' => '',
+		'label'      => 'Empty root path ("")',
+	),
+	// 6. Single root slash
+	array(
+		'input'      => '/',
+		'expected'   => 'accepted',
+		'normalized' => '/',
+		'label'      => 'Single root slash (/)',
+	),
+	// 7. Empty segment in the middle (consecutive slashes)
+	array(
+		'input'      => 'a//b',
+		'expected'   => 'rejected',
+		'normalized' => null,
+		'label'      => 'Empty segment in middle / consecutive slashes (a//b)',
+	),
+	// 8. Relative traversal segment at start
+	array(
+		'input'      => '../a',
+		'expected'   => 'rejected',
+		'normalized' => null,
+		'label'      => 'Relative parent directory traversal (../a)',
+	),
+	// 9. Absolute mid-path traversal
+	array(
+		'input'      => '/a/../b',
+		'expected'   => 'rejected',
+		'normalized' => null,
+		'label'      => 'Absolute mid-path directory traversal (/a/../b)',
+	),
+	// 10. Windows drive letter and backslash
+	array(
+		'input'      => 'C:\x',
+		'expected'   => 'rejected',
+		'normalized' => null,
+		'label'      => 'Windows drive letter with backslash (C:\x)',
+	),
+	// 11. ParsPack / live hosting absolute path
+	array(
+		'input'      => '/domains/x.net/public_html/uploads',
+		'expected'   => 'accepted',
+		'normalized' => '/domains/x.net/public_html/uploads',
+		'label'      => 'ParsPack hosting absolute path (/domains/x.net/public_html/uploads)',
+	),
+	// 12. Persian segment
+	array(
+		'input'      => '/domains/site.ir/آپلودها/فایل',
+		'expected'   => 'accepted',
+		'normalized' => '/domains/site.ir/آپلودها/فایل',
+		'label'      => 'Persian directory segment (/domains/site.ir/آپلودها/فایل)',
+	),
+	// 13. Segment with spaces
+	array(
+		'input'      => '/domains/x.net/public html/uploads',
+		'expected'   => 'accepted',
+		'normalized' => '/domains/x.net/public html/uploads',
+		'label'      => 'Directory segment with spaces (/domains/x.net/public html/uploads)',
+	),
+);
+
+$roots_all_passed = true;
+
+foreach ($root_test_cases as $rtc) {
+	$input      = $rtc['input'];
+	$expected   = $rtc['expected'];
+	$norm_exp   = $rtc['normalized'];
+	$label      = $rtc['label'];
+
+	$actual_state = 'accepted';
+	$actual_norm  = null;
+	$exception_msg = '';
+
+	try {
+		$actual_norm = FileChi_Path::normalize_root($input);
+	} catch (InvalidArgumentException $e) {
+		$actual_state  = 'rejected';
+		$exception_msg = $e->getMessage();
+	}
+
+	$is_valid_bool = FileChi_Path::is_valid_root($input);
+	$expected_bool = ($expected === 'accepted');
+
+	$matches_expected = ($actual_state === $expected) && ($is_valid_bool === $expected_bool);
+	if ($expected === 'accepted' && $actual_norm !== $norm_exp) {
+		$matches_expected = false;
+	}
+
+	if (!$matches_expected) {
+		$roots_all_passed = false;
+		echo "[-] FAIL: {$label}\n";
+		echo "    Input:      " . addcslashes($input, "\0..\37\177") . "\n";
+		echo "    Expected:   {$expected}" . ($norm_exp !== null ? " => '{$norm_exp}'" : '') . "\n";
+		echo "    Actual:     {$actual_state}" . ($actual_norm !== null ? " => '{$actual_norm}'" : '') . ($exception_msg ? " ({$exception_msg})" : '') . "\n";
+	} else {
+		echo "[+] PASS: {$label} => State: {$actual_state}";
+		if ($actual_state === 'accepted') {
+			echo " (Normalized: '{$actual_norm}')";
+		} else {
+			echo " (Reason: {$exception_msg})";
+		}
+		echo "\n";
+	}
+
+	assert($actual_state === $expected, "Root '{$label}' must be {$expected}");
+	assert($is_valid_bool === $expected_bool, "is_valid_root() for '{$label}' must match {$expected}");
+	if ($expected === 'accepted') {
+		assert($actual_norm === $norm_exp, "Normalized root '{$actual_norm}' must match expected '{$norm_exp}'");
+	}
+}
+
+echo "\n" . ($roots_all_passed ? "All FileChi_Path::normalize_root() unit tests passed successfully!" : "Some root tests failed!") . "\n";
+

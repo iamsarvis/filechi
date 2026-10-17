@@ -50,6 +50,47 @@ echo "SFTP protected file path: $resolved_prot\n";
 assert($resolved_normal === '/var/www/public_html/wp-content/uploads/2026/10/normal.jpg');
 assert($resolved_prot === '/home/secure/protected_woocommerce/woocommerce_uploads/2026/10/file.zip');
 
+// SFTP Absolute Root Test Cases (Item 4b.5)
+$sftp_abs = new FileChi_Storage_SFTP(array(
+	'host'           => 'localhost',
+	'username'       => 'test',
+	'root_path'      => '/domains/pz16241.parspack.net/public_html/uploads/',
+	'protected_path' => '/home/secure/protected_woocommerce/',
+));
+$sftp_abs_normal = $sftp_abs->resolve_path('2026/10/photo.jpg');
+$sftp_abs_root   = $sftp_abs->resolve_path('');
+$sftp_abs_probe  = $sftp_abs->resolve_path('.filechi-probe-12345678.tmp');
+echo "SFTP absolute root normal path: $sftp_abs_normal\n";
+echo "SFTP absolute root directory query: $sftp_abs_root\n";
+echo "SFTP absolute root probe path: $sftp_abs_probe\n";
+assert($sftp_abs_normal === '/domains/pz16241.parspack.net/public_html/uploads/2026/10/photo.jpg');
+assert($sftp_abs_root === '/domains/pz16241.parspack.net/public_html/uploads');
+assert($sftp_abs_probe === '/domains/pz16241.parspack.net/public_html/uploads/.filechi-probe-12345678.tmp');
+
+// SFTP Single Root "/"
+$sftp_single = new FileChi_Storage_SFTP(array(
+	'host'      => 'localhost',
+	'username'  => 'test',
+	'root_path' => '/',
+));
+assert($sftp_single->resolve_path('2026/10/photo.jpg') === '/2026/10/photo.jpg');
+assert($sftp_single->resolve_path('') === '/');
+
+// SFTP Invalid Root Fail Closed
+$sftp_invalid_root = new FileChi_Storage_SFTP(array(
+	'host'      => 'localhost',
+	'username'  => 'test',
+	'root_path' => '../invalid/traversal',
+));
+$sftp_root_threw = false;
+try {
+	$sftp_invalid_root->resolve_path('test.jpg');
+} catch (FileChi_Path_Exception $e) {
+	$sftp_root_threw = true;
+}
+assert($sftp_root_threw === true, 'SFTP resolve_path must throw FileChi_Path_Exception on invalid root path');
+echo "SFTP absolute root unit checks: PASS\n";
+
 $ftps            = new FileChi_Storage_FTPS(array(
 	'host'           => 'localhost',
 	'username'       => 'test',

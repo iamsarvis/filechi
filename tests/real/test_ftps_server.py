@@ -79,6 +79,8 @@ def main():
     temp_dir = tempfile.mkdtemp(prefix="filechi_ftps_")
     ftp_home = os.path.join(temp_dir, "ftphome")
     os.makedirs(ftp_home, exist_ok=True)
+    uploads_dir = os.path.join(ftp_home, "uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
 
     cert_path = os.path.join(temp_dir, "server.crt")
     key_path = os.path.join(temp_dir, "server.key")
@@ -120,8 +122,8 @@ def main():
         script_dir = os.path.dirname(os.path.abspath(__file__))
         check_script = os.path.join(script_dir, "check_ftps_real.php")
 
-        cmd = [php_bin, check_script, "127.0.0.1", str(port), "testuser", "testpass", pin]
-        print(f"Executing checks: {' '.join(cmd)}\n")
+        cmd = [php_bin, check_script, "127.0.0.1", str(port), "testuser", "testpass", pin, "/uploads"]
+        print(f"Executing checks with absolute root /uploads: {' '.join(cmd)}\n")
 
         res = subprocess.run(cmd)
 
