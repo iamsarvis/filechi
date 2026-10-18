@@ -204,18 +204,42 @@ function filechi_handle_signed_download() {
 	$file_type = wp_check_filetype($filename);
 	$mime_type = !empty($file_type['type']) ? $file_type['type'] : 'application/octet-stream';
 
+	// Compute ASCII fallback filename for RFC 5987 Content-Disposition
+	$ext        = pathinfo($filename, PATHINFO_EXTENSION);
+	$base       = pathinfo($filename, PATHINFO_FILENAME);
+	$ascii_base = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $base);
+	$ascii_base = trim((string) $ascii_base, '_');
+	if ($ascii_base === '') {
+		$ascii_base = 'download';
+	}
+	$ascii_filename = !empty($ext) ? $ascii_base . '.' . preg_replace('/[^a-zA-Z0-9]/', '', (string) $ext) : $ascii_base;
+
+	// Guard time limit and abort handling for large streaming downloads
+	if (function_exists('set_time_limit') && false === strpos((string) ini_get('disable_functions'), 'set_time_limit')) {
+		@set_time_limit(0);
+	}
+	if (function_exists('ignore_user_abort')) {
+		@ignore_user_abort(true);
+	}
+
 	// Send strict streaming download headers
 	nocache_headers();
 	header('Content-Type: ' . $mime_type);
-	header('Content-Disposition: attachment; filename="' . rawurlencode($filename) . '"');
+	header(sprintf('Content-Disposition: attachment; filename="%s"; filename*=UTF-8\'\'%s', $ascii_filename, rawurlencode($filename)));
+	header('X-Content-Type-Options: nosniff');
 	header('Cache-Control: private, no-transform, no-store, must-revalidate');
 	header('Pragma: no-cache');
 	header('Expires: 0');
 
+	if ($size >= 0) {
+		header('Content-Length: ' . (int) $size);
+	}
+
 	// Stream chunk by chunk directly to output without loading file into memory
 	$success = $driver->stream_to_output($file, 1048576);
 	if (!$success) {
-		wp_die(esc_html__('Failed to stream remote file.', 'filechi'), 500);
+		error_log(sprintf('FileChi: Streaming failed for file "%s" from provider ID %d. Error: %s', $file, $provider_id, $driver->get_last_error()));
+		exit;
 	}
 	exit;
 }
