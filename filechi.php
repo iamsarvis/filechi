@@ -176,6 +176,25 @@ function filechi_handle_signed_download() {
 		wp_die(esc_html__('Storage driver unavailable.', 'filechi'), 500);
 	}
 
+	// Verify remote file existence before sending any headers
+	try {
+		$file_exists = $driver->exists($file);
+	} catch (\Exception $e) {
+		wp_die(esc_html__('Remote storage connection error.', 'filechi'), 500);
+	}
+
+	if (!$file_exists) {
+		wp_die(esc_html__('File not found.', 'filechi'), 404);
+	}
+
+	// Retrieve file size when protocol provides it cheaply
+	$size = -1;
+	try {
+		$size = $driver->get_size($file);
+	} catch (\Exception $e) {
+		$size = -1;
+	}
+
 	// Clear all active output buffers to prevent corruption and reduce memory usage
 	while (ob_get_level() > 0) {
 		ob_end_clean();
