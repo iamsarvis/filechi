@@ -689,7 +689,7 @@
 
 				el(ToggleControl, {
 					label: 'Generate signed, time-limited download URLs for WooCommerce downloadable products',
-					help: 'When enabled, download requests are served with AWS SigV4 signed time-limited URLs or secure tokenized streaming redirects rather than exposing permanent remote links.',
+					help: 'When enabled, SFTP/FTPS downloads are streamed through your server; S3-compatible downloads use pre-signed URLs.',
 					checked: !!settings.wc_signed_downloads,
 					onChange: (val) => setSettings(Object.assign({}, settings, { wc_signed_downloads: val ? 1 : 0 })),
 				}),
