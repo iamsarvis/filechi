@@ -43,6 +43,13 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	protected $provider_id = 0;
 
 	/**
+	 * Internal flag indicating whether a probe is being executed.
+	 *
+	 * @var bool
+	 */
+	protected $internal_probe_mode = false;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param array $settings
@@ -148,8 +155,11 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 			return $norm_root;
 		}
 
-		$is_probe_file = $is_probe || (strpos($remote_path, '.filechi-probe') === 0) || (strpos($remote_path, 'filechi-probe') === 0);
-		if ($is_probe_file) {
+		$effective_is_probe = ($is_probe === true || !empty($this->internal_probe_mode));
+		if ($effective_is_probe) {
+			if (!preg_match('/^\.filechi-probe-[a-f0-9]{8,32}\.tmp$/', $remote_path)) {
+				throw new FileChi_Path_Exception(esc_html__('Invalid probe file name format.', 'filechi'));
+			}
 			$clean_path = $remote_path;
 		} else {
 			$clean_path = FileChi_Path::validate($remote_path);

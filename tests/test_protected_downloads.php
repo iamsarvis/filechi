@@ -59,7 +59,7 @@ $sftp_abs = new FileChi_Storage_SFTP(array(
 ));
 $sftp_abs_normal = $sftp_abs->resolve_path('2026/10/photo.jpg');
 $sftp_abs_root   = $sftp_abs->resolve_path('');
-$sftp_abs_probe  = $sftp_abs->resolve_path('.filechi-probe-12345678.tmp');
+$sftp_abs_probe  = $sftp_abs->resolve_path('.filechi-probe-12345678.tmp', true);
 echo "SFTP absolute root normal path: $sftp_abs_normal\n";
 echo "SFTP absolute root directory query: $sftp_abs_root\n";
 echo "SFTP absolute root probe path: $sftp_abs_probe\n";

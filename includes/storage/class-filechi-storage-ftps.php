@@ -35,6 +35,13 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	protected $provider_id = 0;
 
 	/**
+	 * Internal flag indicating whether a probe is being executed.
+	 *
+	 * @var bool
+	 */
+	protected $internal_probe_mode = false;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param array<string, mixed> $settings    Provider settings.
@@ -262,9 +269,11 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			return $norm_root;
 		}
 
-		// Never pass probe file name to the key validator
-		$is_probe_file = $is_probe || (strpos($remote_path, '.filechi-probe') === 0) || (strpos($remote_path, 'filechi-probe') === 0);
-		if ($is_probe_file) {
+		$effective_is_probe = ($is_probe === true || !empty($this->internal_probe_mode));
+		if ($effective_is_probe) {
+			if (!preg_match('/^\.filechi-probe-[a-f0-9]{8,32}\.tmp$/', $remote_path)) {
+				throw new FileChi_Path_Exception(esc_html__('Invalid probe file name format.', 'filechi'));
+			}
 			$clean_path = $remote_path;
 		} else {
 			$clean_path = FileChi_Path::validate($remote_path);
@@ -1497,39 +1506,44 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	 * @return array<string, mixed>|null Returns failure array to stop or null on success.
 	 */
 	public function test_stage_write_probe(array &$stages) {
-		$rand_suffix   = function_exists('wp_generate_password') ? wp_generate_password(8, false) : bin2hex(random_bytes(4));
+		$rand_suffix   = bin2hex(random_bytes(8));
 		$probe_name    = '.filechi-probe-' . $rand_suffix . '.tmp';
 		$probe_content = 'FileChi connection test probe ' . gmdate('c');
 
-		$put_ok = $this->upload_content($probe_content, $probe_name, 'text/plain');
-		if (!$put_ok) {
-			$detail   = sprintf(
-				/* translators: %s: Error message */
-				esc_html__('Write probe upload failed: %s', 'filechi'),
-				$this->get_last_error() ?: esc_html__('Could not write probe file to remote storage.', 'filechi')
-			);
-			$stages[] = array(
-				'name'   => 'write_probe',
-				'ok'     => false,
-				'detail' => $detail,
-			);
-			return array(
-				'success' => false,
-				'message' => sprintf(
-					/* translators: %s: Detail */
-					esc_html__('FTPS write probe failed: %s', 'filechi'),
-					$detail
-				),
-				'stages'  => $stages,
-				'details' => array(
-					'failed_stage' => 'write_probe',
-					'last_error'   => $this->get_last_error(),
-				),
-			);
-		}
+		$this->internal_probe_mode = true;
+		try {
+			$put_ok = $this->upload_content($probe_content, $probe_name, 'text/plain');
+			if (!$put_ok) {
+				$detail   = sprintf(
+					/* translators: %s: Error message */
+					esc_html__('Write probe upload failed: %s', 'filechi'),
+					$this->get_last_error() ?: esc_html__('Could not write probe file to remote storage.', 'filechi')
+				);
+				$stages[] = array(
+					'name'   => 'write_probe',
+					'ok'     => false,
+					'detail' => $detail,
+				);
+				return array(
+					'success' => false,
+					'message' => sprintf(
+						/* translators: %s: Detail */
+						esc_html__('FTPS write probe failed: %s', 'filechi'),
+						$detail
+					),
+					'stages'  => $stages,
+					'details' => array(
+						'failed_stage' => 'write_probe',
+						'last_error'   => $this->get_last_error(),
+					),
+				);
+			}
 
-		// Delete probe file
-		$del_ok = $this->delete($probe_name);
+			// Delete probe file
+			$del_ok = $this->delete($probe_name);
+		} finally {
+			$this->internal_probe_mode = false;
+		}
 		if (!$del_ok) {
 			$stages[] = array(
 				'name'   => 'write_probe',
