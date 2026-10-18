@@ -153,6 +153,18 @@ function filechi_handle_signed_download() {
 		wp_die(esc_html__('Invalid or tampered download signature.', 'filechi'), 403);
 	}
 
+	// Validate path strictly using Step 4 validator (invalid -> 404)
+	try {
+		$file = FileChi_Path::validate($file);
+	} catch (InvalidArgumentException $e) {
+		wp_die(esc_html__('File not found.', 'filechi'), 404);
+	}
+
+	// Serve only keys that exist as transferred for that provider in filechi_logs
+	if (!FileChi_DB::is_file_transferred($provider_id, $file)) {
+		wp_die(esc_html__('File not found.', 'filechi'), 404);
+	}
+
 	// Retrieve specific provider bound to the download token
 	$provider = FileChi_DB::get_provider($provider_id, true);
 	if (!$provider) {

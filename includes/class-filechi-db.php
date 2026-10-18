@@ -507,6 +507,30 @@ class FileChi_DB {
 	}
 
 	/**
+	 * Checks whether a given relative storage key has been transferred to a provider.
+	 *
+	 * @param int    $provider_id Provider ID.
+	 * @param string $file_path   Relative storage key.
+	 * @return bool True if a transferred log record exists for this provider, false otherwise.
+	 */
+	public static function is_file_transferred($provider_id, $file_path) {
+		global $wpdb;
+		$table       = self::get_logs_table();
+		$provider_id = absint($provider_id);
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$status = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT status FROM {$table} WHERE provider_id = %d AND file_path = %s AND status = 'transferred' LIMIT 1",
+				$provider_id,
+				$file_path
+			)
+		);
+
+		return !empty($status);
+	}
+
+	/**
 	 * Retrieves paginated transfer logs.
 	 *
 	 * @param array $args Query filters (status, limit, offset, search).
