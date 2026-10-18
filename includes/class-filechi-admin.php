@@ -168,10 +168,24 @@ class FileChi_Admin {
 	}
 
 	/**
+	 * Checks if any integration that uses protected files is active.
+	 *
+	 * @return bool
+	 */
+	public static function has_active_protected_integration() {
+		return class_exists('WooCommerce');
+	}
+
+	/**
 	 * Renders security notices in wp-admin if a protected WooCommerce file cannot be offloaded.
 	 */
 	public function render_admin_notices() {
 		if (!current_user_can('manage_options')) {
+			return;
+		}
+
+		if (!self::has_active_protected_integration()) {
+			delete_option('filechi_protected_path_missing_notice');
 			return;
 		}
 
