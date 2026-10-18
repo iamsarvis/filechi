@@ -6,7 +6,7 @@
 (function (wp) {
 	'use strict';
 
-	const { createElement: el, useState, useEffect, useCallback } = wp.element;
+	const { createElement: el, useState, useEffect, useCallback } = (wp && wp.element) || {};
 	const {
 		TabPanel,
 		Button,
@@ -16,8 +16,8 @@
 		Notice,
 		Spinner,
 		Modal,
-	} = wp.components;
-	const apiFetch = wp.apiFetch;
+	} = (wp && wp.components) || {};
+	const apiFetch = (wp && wp.apiFetch) || function () {};
 
 	function formatBytes(bytes) {
 		if (!bytes || bytes === 0) return '0 B';
@@ -1281,11 +1281,20 @@
 	}
 
 	// Mount Component when DOM is ready
-	document.addEventListener('DOMContentLoaded', function () {
-		const root = document.getElementById('filechi-admin-app');
-		if (root) {
-			wp.element.render(el(FileChiAdminApp), root);
-		}
-	});
+	if (typeof document !== 'undefined') {
+		document.addEventListener('DOMContentLoaded', function () {
+			const root = document.getElementById('filechi-admin-app');
+			if (root && wp && wp.element) {
+				wp.element.render(el(FileChiAdminApp), root);
+			}
+		});
+	}
 
-})(window.wp);
+	if (typeof module !== 'undefined' && module.exports) {
+		module.exports = {
+			visibleTabs,
+			showProtectedPath,
+		};
+	}
+
+})(typeof window !== 'undefined' && window.wp ? window.wp : (typeof wp !== 'undefined' ? wp : {}));
