@@ -106,15 +106,25 @@ class FileChi_Admin {
 			$wc_hpos_enabled = (bool) \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
 		}
 
+		$wc_data = array(
+			'active'       => (bool) $wc_active,
+			'version'      => $wc_version,
+			'hpos_enabled' => (bool) $wc_hpos_enabled,
+		);
+
 		return array(
 			'restUrl'       => esc_url_raw(rest_url('filechi/v1')),
 			'nonce'         => wp_create_nonce('wp_rest'),
 			'pluginUrl'     => defined('FILECHI_URL') ? FILECHI_URL : '',
 			'version'       => defined('FILECHI_VERSION') ? FILECHI_VERSION : '1.0.0',
-			'woocommerce'   => array(
-				'active'       => (bool) $wc_active,
-				'version'      => $wc_version,
-				'hpos_enabled' => (bool) $wc_hpos_enabled,
+			'woocommerce'   => $wc_data,
+			'wc'            => $wc_data,
+			'integrations'  => array(
+				array(
+					'id'     => 'woocommerce',
+					'label'  => __('WooCommerce', 'filechi'),
+					'active' => (bool) $wc_active,
+				),
 			),
 			'strings'       => array(
 				'connections'    => __('Connections', 'filechi'),
