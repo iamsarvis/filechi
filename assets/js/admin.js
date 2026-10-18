@@ -71,15 +71,105 @@
 		);
 	}
 
+	const PROTECTED_FILE_INTEGRATIONS = ['woocommerce', 'edd'];
+
+	/**
+	 * Returns visible admin tabs based on active integrations.
+	 *
+	 * @param {Object} data Admin data object.
+	 * @return {Array<{name: string, title: string}>}
+	 */
+	function visibleTabs(data) {
+		const strings = (data && data.strings) || {};
+		const allTabs = [
+			{ name: 'connections', title: strings.connections || 'Connections' },
+			{ name: 'media_rules', title: strings.mediaRules || 'Media Rules' },
+			{ name: 'woocommerce', title: strings.woocommerce || 'WooCommerce' },
+			{ name: 'migration_logs', title: strings.migrationLogs || 'Migration & Logs' },
+		];
+
+		let wcActive = false;
+		if (data && Array.isArray(data.integrations)) {
+			const wcIntegration = data.integrations.find((item) => item && item.id === 'woocommerce');
+			if (wcIntegration) {
+				wcActive = Boolean(wcIntegration.active);
+			}
+		} else if (data && data.woocommerce) {
+			wcActive = Boolean(data.woocommerce.active);
+		} else if (data && data.wc) {
+			wcActive = Boolean(data.wc.active);
+		}
+
+		return allTabs.filter((tab) => {
+			if (tab.name === 'woocommerce') {
+				return wcActive;
+			}
+			return true;
+		});
+	}
+
+	/**
+	 * Determines whether the Protected Downloads Path field should be shown.
+	 *
+	 * @param {Object} data Admin data object.
+	 * @return {boolean}
+	 */
+	function showProtectedPath(data) {
+		if (!data) {
+			return false;
+		}
+		if (Array.isArray(data.integrations)) {
+			return data.integrations.some((item) =>
+				item && PROTECTED_FILE_INTEGRATIONS.indexOf(item.id) !== -1 && Boolean(item.active)
+			);
+		}
+		if (data.woocommerce && Boolean(data.woocommerce.active)) {
+			return true;
+		}
+		if (data.wc && Boolean(data.wc.active)) {
+			return true;
+		}
+		return false;
+	}
+
 	// Main App Component
 	function FileChiAdminApp() {
-		const [activeTab, setActiveTab] = useState('connections');
+		const adminData = (typeof window !== 'undefined' && window.filechiAdminData) ? window.filechiAdminData : {};
+		const tabs = visibleTabs(adminData);
+		const firstTabName = (tabs && tabs.length > 0) ? tabs[0].name : 'connections';
+
+		function resolveInitialTab() {
+			if (typeof window !== 'undefined' && window.location && window.location.hash) {
+				const hash = window.location.hash.replace(/^#\/?/, '').trim();
+				if (tabs.some((t) => t.name === hash)) {
+					return hash;
+				}
+			}
+			return firstTabName;
+		}
+
+		const [activeTab, setActiveTab] = useState(resolveInitialTab);
 		const [providers, setProviders] = useState([]);
 		const [settings, setSettings] = useState(null);
 		const [stats, setStats] = useState(null);
 		const [logs, setLogs] = useState({ items: [], total: 0, page: 1, pages: 1 });
 		const [loading, setLoading] = useState(true);
 		const [globalNotice, setGlobalNotice] = useState(null);
+
+		const isCurrentTabVisible = tabs.some((t) => t.name === activeTab);
+		const currentActiveTab = isCurrentTabVisible ? activeTab : firstTabName;
+
+		useEffect(() => {
+			if (!isCurrentTabVisible) {
+				setActiveTab(firstTabName);
+				if (typeof window !== 'undefined' && window.location && window.location.hash) {
+					const hash = window.location.hash.replace(/^#\/?/, '').trim();
+					if (hash === 'woocommerce') {
+						window.location.hash = firstTabName;
+					}
+				}
+			}
+		}, [isCurrentTabVisible, firstTabName]);
 
 		// Provider Modal State
 		const [isModalOpen, setIsModalOpen] = useState(false);
@@ -432,14 +522,6 @@
 			);
 		}
 
-		// Tab definitions
-		const tabs = [
-			{ name: 'connections', title: 'Connections' },
-			{ name: 'media_rules', title: 'Media Rules' },
-			{ name: 'woocommerce', title: 'WooCommerce' },
-			{ name: 'migration_logs', title: 'Migration & Logs' },
-		];
-
 		const adminVersion = (window.filechiAdminData && window.filechiAdminData.version) ? window.filechiAdminData.version : '';
 		const versionLabel = adminVersion ? (adminVersion.startsWith('v') ? adminVersion : `v${adminVersion}`) : '';
 
@@ -471,9 +553,12 @@
 				className: 'filechi-tab-panel',
 				activeClass: 'is-active',
 				tabs: tabs,
-				initialTabName: activeTab,
+				initialTabName: currentActiveTab,
 				onSelect: (tabName) => {
 					setActiveTab(tabName);
+					if (typeof window !== 'undefined' && window.location) {
+						window.location.hash = tabName;
+					}
 					setGlobalNotice(null);
 					if (tabName === 'migration_logs') {
 						loadStats();
