@@ -519,13 +519,7 @@ class FileChi_DB {
 		$provider_id = absint($provider_id);
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$status = $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT status FROM {$table} WHERE provider_id = %d AND file_path = %s AND status = 'transferred' LIMIT 1",
-				$provider_id,
-				$file_path
-			)
-		);
+		$status = $wpdb->get_var($wpdb->prepare("SELECT status FROM {$table} WHERE provider_id = %d AND file_path = %s AND status = 'transferred' LIMIT 1", $provider_id, $file_path));
 
 		return !empty($status);
 	}
