@@ -28,12 +28,28 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 	protected $last_error = '';
 
 	/**
+	 * Provider ID associated with this driver.
+	 *
+	 * @var int
+	 */
+	protected $provider_id = 0;
+
+	/**
+	 * Internal flag indicating whether a probe is being executed.
+	 *
+	 * @var bool
+	 */
+	protected $internal_probe_mode = false;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param array $settings
+	 * @param int   $provider_id
 	 */
-	public function __construct(array $settings) {
-		$this->settings = wp_parse_args(
+	public function __construct(array $settings, $provider_id = 0) {
+		$this->provider_id = !empty($provider_id) ? absint($provider_id) : (!empty($settings['provider_id']) ? absint($settings['provider_id']) : 0);
+		$this->settings    = wp_parse_args(
 			$settings,
 			array(
 				'provider_type' => 'custom', // 'aws', 'arvancloud', 'parspack', 'custom'
@@ -50,6 +66,7 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 				'timeout'       => 30,
 			)
 		);
+		$this->settings['provider_id'] = $this->provider_id;
 
 		$this->normalize_provider_settings();
 	}
@@ -108,8 +125,11 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 			return $norm_prefix;
 		}
 
-		$is_probe_file = $is_probe || (strpos($key, '.filechi-probe') === 0) || (strpos($key, 'filechi-probe') === 0);
-		if ($is_probe_file) {
+		$effective_is_probe = ($is_probe === true || !empty($this->internal_probe_mode));
+		if ($effective_is_probe) {
+			if (!preg_match('/^\.filechi-probe-[a-f0-9]{8,32}\.tmp$/', $key)) {
+				throw new FileChi_Path_Exception(esc_html__('Invalid probe file name format.', 'filechi'));
+			}
 			$clean_key = $key;
 		} else {
 			$clean_key = FileChi_Path::validate($key);
@@ -570,13 +590,22 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 		// If HEAD on bucket returns 200 or 404 (bucket exists or empty), test put/delete on probe key
 		if ($code === 200 || $code === 404) {
 			// Test write and delete permissions with a small probe object
-			$probe_key = '.filechi-probe-' . wp_generate_password(8, false) . '.txt';
-			$put_res   = $this->upload_content('FileChi connection test probe', $probe_key, 'text/plain');
+			$rand_suffix = bin2hex(random_bytes(8));
+			$probe_key   = '.filechi-probe-' . $rand_suffix . '.tmp';
+			$put_res     = false;
+
+			$this->internal_probe_mode = true;
+			try {
+				$put_res = $this->upload_content('FileChi connection test probe', $probe_key, 'text/plain');
+				if ($put_res) {
+					// Clean up probe object
+					$this->delete($probe_key);
+				}
+			} finally {
+				$this->internal_probe_mode = false;
+			}
 
 			if ($put_res) {
-				// Clean up probe object
-				$this->delete($probe_key);
-
 				return array(
 					'success' => true,
 					'message' => sprintf(
@@ -702,5 +731,20 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 		}
 
 		return 0;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function set_provider_id($provider_id) {
+		$this->provider_id             = absint($provider_id);
+		$this->settings['provider_id'] = $this->provider_id;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_provider_id() {
+		return (int) $this->provider_id;
 	}
 }

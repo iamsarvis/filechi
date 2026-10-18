@@ -36,12 +36,28 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	protected $last_error = '';
 
 	/**
+	 * Provider ID associated with this driver.
+	 *
+	 * @var int
+	 */
+	protected $provider_id = 0;
+
+	/**
+	 * Internal flag indicating whether a probe is being executed.
+	 *
+	 * @var bool
+	 */
+	protected $internal_probe_mode = false;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param array $settings
+	 * @param int   $provider_id
 	 */
-	public function __construct(array $settings) {
-		$this->settings = wp_parse_args(
+	public function __construct(array $settings, $provider_id = 0) {
+		$this->provider_id = !empty($provider_id) ? absint($provider_id) : (!empty($settings['provider_id']) ? absint($settings['provider_id']) : 0);
+		$this->settings    = wp_parse_args(
 			$settings,
 			array(
 				'host'        => '',
@@ -56,6 +72,7 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 				'timeout'     => 30,
 			)
 		);
+		$this->settings['provider_id'] = $this->provider_id;
 
 		// Ensure autoload is loaded
 		$autoload = dirname(dirname(__FILE__)) . '/vendor/autoload.php';
@@ -138,8 +155,11 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 			return $norm_root;
 		}
 
-		$is_probe_file = $is_probe || (strpos($remote_path, '.filechi-probe') === 0) || (strpos($remote_path, 'filechi-probe') === 0);
-		if ($is_probe_file) {
+		$effective_is_probe = ($is_probe === true || !empty($this->internal_probe_mode));
+		if ($effective_is_probe) {
+			if (!preg_match('/^\.filechi-probe-[a-f0-9]{8,32}\.tmp$/', $remote_path)) {
+				throw new FileChi_Path_Exception(esc_html__('Invalid probe file name format.', 'filechi'));
+			}
 			$clean_path = $remote_path;
 		} else {
 			$clean_path = FileChi_Path::validate($remote_path);
@@ -281,18 +301,35 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 			return rtrim($uploads['baseurl'], '/') . '/' . ltrim(str_replace('\\', '/', (string) $remote_path), '/');
 		}
 
-		$expires = time() + absint($expires_in_seconds);
-		$token   = hash_hmac('sha256', $clean_path . '|' . $expires, wp_salt('nonce'));
+		$expires     = time() + absint($expires_in_seconds);
+		$provider_id = (int) $this->provider_id;
+		$token       = hash_hmac('sha256', $provider_id . '|' . $clean_path . '|' . $expires, wp_salt('nonce'));
 
 		return add_query_arg(
 			array(
-				'filechi_action'  => 'download',
-				'filechi_file'    => rawurlencode($clean_path),
-				'filechi_expires' => $expires,
-				'filechi_token'   => $token,
+				'filechi_action'   => 'download',
+				'filechi_file'     => rawurlencode($clean_path),
+				'filechi_expires'  => $expires,
+				'filechi_provider' => $provider_id,
+				'filechi_token'    => $token,
 			),
 			home_url('/')
 		);
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function set_provider_id($provider_id) {
+		$this->provider_id             = absint($provider_id);
+		$this->settings['provider_id'] = $this->provider_id;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_provider_id() {
+		return (int) $this->provider_id;
 	}
 
 	/**

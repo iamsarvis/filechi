@@ -58,27 +58,33 @@ class FileChi_Storage_Factory {
 			return null;
 		}
 
-		$instance = null;
+		$provider_id = !empty($provider['id']) ? (int) $provider['id'] : 0;
+		$instance    = null;
 
 		switch ($driver) {
 			case 'sftp':
 				require_once dirname(__FILE__) . '/class-filechi-storage-sftp.php';
-				$instance = new FileChi_Storage_SFTP($settings);
+				$instance = new FileChi_Storage_SFTP($settings, $provider_id);
 				break;
 
 			case 'ftps':
 				require_once dirname(__FILE__) . '/class-filechi-storage-ftps.php';
-				$instance = new FileChi_Storage_FTPS($settings);
+				$instance = new FileChi_Storage_FTPS($settings, $provider_id);
 				break;
 
 			case 's3':
 				require_once dirname(__FILE__) . '/class-filechi-storage-s3.php';
-				$instance = new FileChi_Storage_S3($settings);
+				$instance = new FileChi_Storage_S3($settings, $provider_id);
 				break;
 		}
 
-		if ($instance && !empty($provider['id'])) {
-			self::$instances[(int) $provider['id']] = $instance;
+		if ($instance) {
+			if ($provider_id > 0) {
+				$instance->set_provider_id($provider_id);
+			}
+			if (!empty($provider['id'])) {
+				self::$instances[(int) $provider['id']] = $instance;
+			}
 		}
 
 		return $instance;

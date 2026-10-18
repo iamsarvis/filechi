@@ -31,7 +31,7 @@ Succeeding discontinued legacy remote attachment plugins, FileChi is a complete 
 ### 3. WooCommerce 10.x & 11.x Integration
 - **High-Performance Order Storage (HPOS):** Explicitly declared and verified custom order tables compatibility.
 - **Product Gallery Images:** Processed automatically through the generic Media Library pipeline.
-- **Secure Downloadable Products:** Generates time-limited, signed URLs (via AWS SigV4 query authentication or HMAC-verified streaming endpoints) so permanent remote URLs and credentials are never exposed.
+- **Secure Downloadable Products:** Generates time-limited, signed URLs. SFTP/FTPS downloads are streamed through your server; S3-compatible downloads use pre-signed URLs. Permanent remote URLs and credentials are never exposed.
 
 ### 4. Background Bulk Migration Tool
 - Asynchronous batch migration powered by **Action Scheduler** with queueing, retry-on-failure, and backoff.

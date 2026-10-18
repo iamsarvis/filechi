@@ -94,4 +94,20 @@ interface FileChi_Storage_Interface {
 	 * @return int Size in bytes, or -1 on error/not found.
 	 */
 	public function get_size($remote_path);
+
+	/**
+	 * Sets the database provider ID associated with this driver.
+	 *
+	 * @param int $provider_id Provider ID.
+	 * @return void
+	 */
+	public function set_provider_id($provider_id);
+
+	/**
+	 * Returns the database provider ID associated with this driver.
+	 *
+	 * @return int Provider ID.
+	 */
+	public function get_provider_id();
 }
+
