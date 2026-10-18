@@ -1110,7 +1110,7 @@
 							placeholder: '/var/www/uploads or public_html/wp-files',
 							help: "Absolute (/home/user/files) or relative to the login directory. Do not use '..'.",
 						}),
-						el(TextControl, {
+						showProtectedPath(window.filechiAdminData) && el(TextControl, {
 							label: 'Protected Downloads Path (optional, outside web root)',
 							value: s.protected_path || '',
 							onChange: (val) => updateSettingField('protected_path', val),
@@ -1177,7 +1177,7 @@
 							placeholder: 'public_html/uploads',
 							help: "Absolute (/home/user/files) or relative to the login directory. Do not use '..'.",
 						}),
-						el(TextControl, {
+						showProtectedPath(window.filechiAdminData) && el(TextControl, {
 							label: 'Protected Downloads Path (optional, outside web root)',
 							value: s.protected_path || '',
 							onChange: (val) => updateSettingField('protected_path', val),
