@@ -429,8 +429,22 @@ if (!function_exists('add_filter')) {
 	function add_filter($tag, $callback, $priority = 10, $accepted_args = 1) {}
 }
 
+if (!function_exists('register_activation_hook')) {
+	function register_activation_hook($file, $callback) {}
+}
+
+if (!function_exists('register_deactivation_hook')) {
+	function register_deactivation_hook($file, $callback) {}
+}
+
 if (!function_exists('do_action')) {
 	function do_action($tag, ...$args) {}
+}
+
+if (!function_exists('did_action')) {
+	function did_action($tag) {
+		return 0;
+	}
 }
 
 if (!function_exists('apply_filters')) {
@@ -690,6 +704,56 @@ if (!class_exists('WP_REST_Request')) {
 		public function get_params() { return $this->params; }
 		public function get_param($key) { return $this->params[$key] ?? null; }
 		public function get_json_params() { return $this->params; }
+	}
+}
+
+if (!class_exists('WPDieException')) {
+	class WPDieException extends Exception {
+		public $status;
+		public function __construct($message = '', $status = 500) {
+			parent::__construct((string) $message, (int) $status);
+			$this->status = (int) $status;
+		}
+	}
+}
+
+if (!function_exists('wp_die')) {
+	function wp_die($message = '', $title = '', $args = array()) {
+		$status = 500;
+		if (is_int($title)) {
+			$status = $title;
+		} elseif (is_int($args)) {
+			$status = $args;
+		} elseif (is_array($args) && isset($args['response'])) {
+			$status = (int) $args['response'];
+		}
+		throw new WPDieException((string) $message, $status);
+	}
+}
+
+if (!function_exists('nocache_headers')) {
+	function nocache_headers() {
+		$GLOBALS['filechi_nocache_called'] = true;
+	}
+}
+
+if (!function_exists('wp_check_filetype')) {
+	function wp_check_filetype($filename, $mimes = null) {
+		$ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+		$types = array(
+			'jpg'  => 'image/jpeg',
+			'jpeg' => 'image/jpeg',
+			'png'  => 'image/png',
+			'gif'  => 'image/gif',
+			'pdf'  => 'application/pdf',
+			'zip'  => 'application/zip',
+			'mp4'  => 'video/mp4',
+			'webp' => 'image/webp',
+		);
+		return array(
+			'ext'  => $ext,
+			'type' => isset($types[$ext]) ? $types[$ext] : 'application/octet-stream',
+		);
 	}
 }
 

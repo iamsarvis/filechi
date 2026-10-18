@@ -19,12 +19,24 @@
 defined('ABSPATH') || exit;
 
 // Define core constants
-define('FILECHI_VERSION', '1.0.0');
-define('FILECHI_FILE', __FILE__);
-define('FILECHI_DIR', plugin_dir_path(__FILE__));
-define('FILECHI_URL', plugin_dir_url(__FILE__));
-define('FILECHI_MIN_PHP', '7.4');
-define('FILECHI_MIN_WP', '6.0');
+if (!defined('FILECHI_VERSION')) {
+	define('FILECHI_VERSION', '1.0.0');
+}
+if (!defined('FILECHI_FILE')) {
+	define('FILECHI_FILE', __FILE__);
+}
+if (!defined('FILECHI_DIR')) {
+	define('FILECHI_DIR', function_exists('plugin_dir_path') ? plugin_dir_path(__FILE__) : dirname(__FILE__) . '/');
+}
+if (!defined('FILECHI_URL')) {
+	define('FILECHI_URL', function_exists('plugin_dir_url') ? plugin_dir_url(__FILE__) : '');
+}
+if (!defined('FILECHI_MIN_PHP')) {
+	define('FILECHI_MIN_PHP', '7.4');
+}
+if (!defined('FILECHI_MIN_WP')) {
+	define('FILECHI_MIN_WP', '6.0');
+}
 
 /**
  * Check PHP and WordPress version requirements before loading.
@@ -43,7 +55,7 @@ function filechi_check_requirements() {
 	}
 
 	global $wp_version;
-	if (version_compare($wp_version, FILECHI_MIN_WP, '<')) {
+	if (!empty($wp_version) && version_compare($wp_version, FILECHI_MIN_WP, '<')) {
 		add_action('admin_notices', function () {
 			echo '<div class="error"><p>' . esc_html(sprintf(
 				/* translators: 1: Required WP version */
@@ -200,19 +212,8 @@ function filechi_handle_signed_download() {
 		ob_end_clean();
 	}
 
-	$filename  = basename($file);
-	$file_type = wp_check_filetype($filename);
-	$mime_type = !empty($file_type['type']) ? $file_type['type'] : 'application/octet-stream';
-
-	// Compute ASCII fallback filename for RFC 5987 Content-Disposition
-	$ext        = pathinfo($filename, PATHINFO_EXTENSION);
-	$base       = pathinfo($filename, PATHINFO_FILENAME);
-	$ascii_base = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $base);
-	$ascii_base = trim((string) $ascii_base, '_');
-	if ($ascii_base === '') {
-		$ascii_base = 'download';
-	}
-	$ascii_filename = !empty($ext) ? $ascii_base . '.' . preg_replace('/[^a-zA-Z0-9]/', '', (string) $ext) : $ascii_base;
+	$filename = basename($file);
+	$headers  = filechi_build_download_headers($filename, $size);
 
 	// Guard time limit and abort handling for large streaming downloads
 	if (function_exists('set_time_limit') && false === strpos((string) ini_get('disable_functions'), 'set_time_limit')) {
@@ -224,15 +225,9 @@ function filechi_handle_signed_download() {
 
 	// Send strict streaming download headers
 	nocache_headers();
-	header('Content-Type: ' . $mime_type);
-	header(sprintf('Content-Disposition: attachment; filename="%s"; filename*=UTF-8\'\'%s', $ascii_filename, rawurlencode($filename)));
-	header('X-Content-Type-Options: nosniff');
-	header('Cache-Control: private, no-transform, no-store, must-revalidate');
-	header('Pragma: no-cache');
-	header('Expires: 0');
-
-	if ($size >= 0) {
-		header('Content-Length: ' . (int) $size);
+	$GLOBALS['filechi_last_download_headers'] = $headers;
+	foreach ($headers as $h_name => $h_val) {
+		header($h_name . ': ' . $h_val);
 	}
 
 	// Stream chunk by chunk directly to output without loading file into memory
@@ -242,4 +237,44 @@ function filechi_handle_signed_download() {
 		exit;
 	}
 	exit;
+}
+
+/**
+ * Builds RFC 5987 compliant streaming download headers.
+ *
+ * @param string $filename  Original file name.
+ * @param int    $size      File size in bytes (-1 if unknown).
+ * @param string $mime_type Optional MIME content type.
+ * @return array<string, string> Array of header name => value.
+ */
+function filechi_build_download_headers($filename, $size = -1, $mime_type = '') {
+	if (empty($mime_type)) {
+		$file_type = wp_check_filetype($filename);
+		$mime_type = !empty($file_type['type']) ? $file_type['type'] : 'application/octet-stream';
+	}
+
+	// Compute ASCII fallback filename for RFC 5987 Content-Disposition
+	$ext        = pathinfo($filename, PATHINFO_EXTENSION);
+	$base       = pathinfo($filename, PATHINFO_FILENAME);
+	$ascii_base = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $base);
+	$ascii_base = trim((string) $ascii_base, '_-');
+	if ($ascii_base === '' || !preg_match('/[a-zA-Z0-9]/', $ascii_base)) {
+		$ascii_base = 'download';
+	}
+	$ascii_filename = !empty($ext) ? $ascii_base . '.' . preg_replace('/[^a-zA-Z0-9]/', '', (string) $ext) : $ascii_base;
+
+	$headers = array(
+		'Content-Type'           => $mime_type,
+		'Content-Disposition'    => sprintf('attachment; filename="%s"; filename*=UTF-8\'\'%s', $ascii_filename, rawurlencode($filename)),
+		'X-Content-Type-Options' => 'nosniff',
+		'Cache-Control'          => 'private, no-transform, no-store, must-revalidate',
+		'Pragma'                 => 'no-cache',
+		'Expires'                => '0',
+	);
+
+	if ($size >= 0) {
+		$headers['Content-Length'] = (string) (int) $size;
+	}
+
+	return $headers;
 }
