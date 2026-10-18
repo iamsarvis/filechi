@@ -28,12 +28,21 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	protected $last_error = '';
 
 	/**
+	 * Provider ID associated with this driver.
+	 *
+	 * @var int
+	 */
+	protected $provider_id = 0;
+
+	/**
 	 * Constructor.
 	 *
-	 * @param array<string, mixed> $settings Provider settings.
+	 * @param array<string, mixed> $settings    Provider settings.
+	 * @param int                  $provider_id Provider ID.
 	 */
-	public function __construct(array $settings) {
-		$this->settings = wp_parse_args(
+	public function __construct(array $settings, $provider_id = 0) {
+		$this->provider_id = !empty($provider_id) ? absint($provider_id) : (!empty($settings['provider_id']) ? absint($settings['provider_id']) : 0);
+		$this->settings    = wp_parse_args(
 			$settings,
 			array(
 				'host'           => '',
@@ -49,6 +58,7 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 				'tls_pin'        => '',
 			)
 		);
+		$this->settings['provider_id'] = $this->provider_id;
 	}
 
 	/**
@@ -683,18 +693,35 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			return rtrim($uploads['baseurl'], '/') . '/' . ltrim(str_replace('\\', '/', (string) $remote_path), '/');
 		}
 
-		$expires = time() + absint($expires_in_seconds);
-		$token   = hash_hmac('sha256', $clean_path . '|' . $expires, wp_salt('nonce'));
+		$expires     = time() + absint($expires_in_seconds);
+		$provider_id = (int) $this->provider_id;
+		$token       = hash_hmac('sha256', $provider_id . '|' . $clean_path . '|' . $expires, wp_salt('nonce'));
 
 		return add_query_arg(
 			array(
-				'filechi_action'  => 'download',
-				'filechi_file'    => rawurlencode($clean_path),
-				'filechi_expires' => $expires,
-				'filechi_token'   => $token,
+				'filechi_action'   => 'download',
+				'filechi_file'     => rawurlencode($clean_path),
+				'filechi_expires'  => $expires,
+				'filechi_provider' => $provider_id,
+				'filechi_token'    => $token,
 			),
 			home_url('/')
 		);
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function set_provider_id($provider_id) {
+		$this->provider_id             = absint($provider_id);
+		$this->settings['provider_id'] = $this->provider_id;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_provider_id() {
+		return (int) $this->provider_id;
 	}
 
 	/**

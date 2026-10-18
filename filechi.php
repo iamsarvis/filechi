@@ -130,37 +130,33 @@ function filechi_handle_signed_download() {
 
 	// Do not use sanitize_text_field() on paths; validate strictly via FileChi_Path::validate().
 	// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Path validated strictly via FileChi_Path::validate().
-	$raw_file = isset($_GET['filechi_file']) ? (string) wp_unslash($_GET['filechi_file']) : '';
-	$expires  = isset($_GET['filechi_expires']) ? absint($_GET['filechi_expires']) : 0;
-	$token    = isset($_GET['filechi_token']) ? sanitize_text_field(wp_unslash($_GET['filechi_token'])) : '';
+	$raw_file    = isset($_GET['filechi_file']) ? (string) wp_unslash($_GET['filechi_file']) : '';
+	$expires     = isset($_GET['filechi_expires']) ? absint($_GET['filechi_expires']) : 0;
+	$provider_id = isset($_GET['filechi_provider']) ? absint($_GET['filechi_provider']) : 0;
+	$token       = isset($_GET['filechi_token']) ? sanitize_text_field(wp_unslash($_GET['filechi_token'])) : '';
 	// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
-	if (empty($raw_file) || empty($expires) || empty($token)) {
+	if (empty($raw_file) || empty($expires) || empty($token) || empty($provider_id)) {
 		wp_die(esc_html__('Invalid download request parameters.', 'filechi'), 400);
 	}
 
-	// Validate path strictly (invalid -> 404)
-	try {
-		$file = FileChi_Path::validate(rawurldecode($raw_file));
-	} catch (InvalidArgumentException $e) {
-		wp_die(esc_html__('File not found.', 'filechi'), 404);
-	}
+	$file = rawurldecode($raw_file);
 
 	// Verify expiration
 	if (time() > $expires) {
 		wp_die(esc_html__('This download link has expired. Please request a new link from your account.', 'filechi'), 403);
 	}
 
-	// Verify HMAC signature
-	$expected_token = hash_hmac('sha256', $file . '|' . $expires, wp_salt('nonce'));
+	// Verify HMAC signature binding provider_id|file|expires
+	$expected_token = hash_hmac('sha256', $provider_id . '|' . $file . '|' . $expires, wp_salt('nonce'));
 	if (!hash_equals($expected_token, $token)) {
 		wp_die(esc_html__('Invalid or tampered download signature.', 'filechi'), 403);
 	}
 
-	// Retrieve driver
-	$provider = FileChi_DB::get_default_provider();
+	// Retrieve specific provider bound to the download token
+	$provider = FileChi_DB::get_provider($provider_id, true);
 	if (!$provider) {
-		wp_die(esc_html__('Remote storage provider not found.', 'filechi'), 500);
+		wp_die(esc_html__('Remote storage provider not found.', 'filechi'), 404);
 	}
 
 	$driver = FileChi_Storage_Factory::create($provider);

@@ -114,6 +114,16 @@ class Reliability_Mock_Driver implements FileChi_Storage_Interface {
 	public function stream_to_output($remote_path, $chunk_size = 1048576) {
 		return true;
 	}
+
+	public $provider_id = 1;
+
+	public function set_provider_id($provider_id) {
+		$this->provider_id = (int) $provider_id;
+	}
+
+	public function get_provider_id() {
+		return (int) $this->provider_id;
+	}
 }
 
 // In-memory transfer logs storage for test assertions

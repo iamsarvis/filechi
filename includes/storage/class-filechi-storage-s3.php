@@ -28,12 +28,21 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 	protected $last_error = '';
 
 	/**
+	 * Provider ID associated with this driver.
+	 *
+	 * @var int
+	 */
+	protected $provider_id = 0;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param array $settings
+	 * @param int   $provider_id
 	 */
-	public function __construct(array $settings) {
-		$this->settings = wp_parse_args(
+	public function __construct(array $settings, $provider_id = 0) {
+		$this->provider_id = !empty($provider_id) ? absint($provider_id) : (!empty($settings['provider_id']) ? absint($settings['provider_id']) : 0);
+		$this->settings    = wp_parse_args(
 			$settings,
 			array(
 				'provider_type' => 'custom', // 'aws', 'arvancloud', 'parspack', 'custom'
@@ -50,6 +59,7 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 				'timeout'       => 30,
 			)
 		);
+		$this->settings['provider_id'] = $this->provider_id;
 
 		$this->normalize_provider_settings();
 	}
@@ -702,5 +712,20 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 		}
 
 		return 0;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function set_provider_id($provider_id) {
+		$this->provider_id             = absint($provider_id);
+		$this->settings['provider_id'] = $this->provider_id;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function get_provider_id() {
+		return (int) $this->provider_id;
 	}
 }
