@@ -222,28 +222,52 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	/**
 	 * Resolves and normalizes remote path. Single place that builds paths.
 	 *
-	 * @param string $remote_path
-	 * @return string
+	 * @param string $remote_path Relative attachment key, probe file name, or empty string for root.
+	 * @param bool   $is_probe    Whether this is a diagnostic probe file.
+	 * @return string Full remote path (or normalized root if $remote_path is empty).
+	 * @throws FileChi_Path_Exception When root or key fails validation.
+	 * @throws RuntimeException When protected file is targeted without protected_path configured.
 	 */
-	public function resolve_path($remote_path) {
-		$clean_path = FileChi_Path::validate($remote_path);
+	public function resolve_path($remote_path = '', $is_probe = false) {
+		$raw_prot = (string) ($this->settings['protected_path'] ?? '');
+		$raw_root = (string) ($this->settings['root_path'] ?? '');
 
-		if (class_exists('FileChi_Media') && FileChi_Media::is_protected_file($clean_path)) {
-			$prot_root = trim((string) ($this->settings['protected_path'] ?? ''));
-			if (!empty($prot_root)) {
-				$prot_root = rtrim(str_replace('\\', '/', $prot_root), '/');
-				return $prot_root . '/' . $clean_path;
+		// Check if this targets a protected WooCommerce file
+		$is_protected = false;
+		if ($remote_path !== '' && class_exists('FileChi_Media') && FileChi_Media::is_protected_file($remote_path)) {
+			$is_protected = true;
+		}
+
+		if ($is_protected) {
+			if ($raw_prot === '') {
+				throw new RuntimeException(esc_html__('Protected file cannot be stored: FTPS provider has no protected_path configured.', 'filechi'));
 			}
-			throw new RuntimeException(esc_html__('Protected file cannot be stored: FTPS provider has no protected_path configured.', 'filechi'));
+			$norm_root = FileChi_Path::normalize_root($raw_prot);
+		} else {
+			$norm_root = FileChi_Path::normalize_root($raw_root);
 		}
 
-		$root = trim((string) ($this->settings['root_path'] ?? ''));
-		if (!empty($root)) {
-			$root = rtrim(str_replace('\\', '/', $root), '/');
-			return $root . '/' . $clean_path;
+		// If remote path is empty, return the normalized root directory itself
+		if ($remote_path === '') {
+			return $norm_root;
 		}
 
-		return $clean_path;
+		// Never pass probe file name to the key validator
+		$is_probe_file = $is_probe || (strpos($remote_path, '.filechi-probe') === 0) || (strpos($remote_path, 'filechi-probe') === 0);
+		if ($is_probe_file) {
+			$clean_path = $remote_path;
+		} else {
+			$clean_path = FileChi_Path::validate($remote_path);
+		}
+
+		if ($norm_root === '') {
+			return $clean_path;
+		}
+		if ($norm_root === '/') {
+			return '/' . $clean_path;
+		}
+
+		return $norm_root . '/' . $clean_path;
 	}
 
 	/**
@@ -458,9 +482,6 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			$this->last_error = $e->getMessage();
 			return false;
 		}
-		if (!$this->validate_remote_path($resolved_path)) {
-			return false;
-		}
 
 		$fp = @fopen($local_file, 'rb');
 		if (!$fp) {
@@ -516,9 +537,6 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			$this->last_error = $e->getMessage();
 			return false;
 		}
-		if (!$this->validate_remote_path($resolved_path)) {
-			return false;
-		}
 
 		$stream = fopen('php://temp', 'r+');
 		if (!$stream) {
@@ -569,9 +587,6 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			$this->last_error = $e->getMessage();
 			return false;
 		}
-		if (!$this->validate_remote_path($resolved_path)) {
-			return false;
-		}
 
 		$url = $this->build_base_curl_url();
 		$ch  = $this->create_curl_handle($url);
@@ -611,9 +626,6 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			$resolved_path = $this->resolve_path($remote_path);
 		} catch (\Exception $e) {
 			$this->last_error = $e->getMessage();
-			return -1;
-		}
-		if (!$this->validate_remote_path($resolved_path)) {
 			return -1;
 		}
 
@@ -695,9 +707,6 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 			$resolved_path = $this->resolve_path($remote_path);
 		} catch (\Exception $e) {
 			$this->last_error = $e->getMessage();
-			return false;
-		}
-		if (!$this->validate_remote_path($resolved_path)) {
 			return false;
 		}
 
@@ -1211,56 +1220,87 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	 * @return array<string, mixed>|null Returns failure array to stop or null on success.
 	 */
 	public function test_stage_directory(array &$stages) {
-		$raw_root = trim((string) ($this->settings['root_path'] ?? ''));
+		$raw_root = (string) ($this->settings['root_path'] ?? '');
 		if ($raw_root !== '') {
-			$ch = $this->create_curl_handle($this->build_base_curl_url());
-			curl_setopt($ch, CURLOPT_NOBODY, true);
-			curl_setopt($ch, CURLOPT_QUOTE, array('CWD ' . $raw_root));
-			$this->apply_timeouts($ch, 0);
-
-			$res           = curl_exec($ch);
-			$errno         = curl_errno($ch);
-			$error         = curl_error($ch);
-			$response_code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-			curl_close($ch);
-
-			if ($res === false || ($response_code >= 400 && $response_code <= 599)) {
-				$detail   = sprintf(
-					/* translators: 1: Path, 2: Error */
-					esc_html__('Could not reach remote base path "%1$s": %2$s', 'filechi'),
-					$raw_root,
-					$this->map_curl_error($errno, $error, $response_code, 'Directory change failed')
-				);
+			try {
+				$norm_root = $this->resolve_path('');
+			} catch (FileChi_Path_Exception $e) {
 				$stages[] = array(
 					'name'   => 'directory',
 					'ok'     => false,
-					'detail' => $detail,
+					'detail' => $e->getMessage(),
 				);
 				return array(
 					'success' => false,
 					'message' => sprintf(
-						/* translators: %s: Detail */
+						/* translators: %s: Error message */
 						esc_html__('FTPS remote directory check failed: %s', 'filechi'),
-						$detail
+						$e->getMessage()
 					),
 					'stages'  => $stages,
 					'details' => array(
-						'failed_stage'  => 'directory',
-						'curl_errno'    => $errno,
-						'response_code' => $response_code,
+						'failed_stage' => 'directory',
+						'reason'       => 'invalid_root_path',
 					),
 				);
 			}
 
-			$stages[] = array(
-				'name'   => 'directory',
-				'ok'     => true,
-				'detail' => sprintf(
-					/* translators: %s: Remote path */
-					esc_html__('Remote path "%s" reached', 'filechi'),
-					$raw_root
-				),
-			);
+			if ($norm_root !== '') {
+				$ch = $this->create_curl_handle($this->build_base_curl_url());
+				curl_setopt($ch, CURLOPT_NOBODY, true);
+				curl_setopt($ch, CURLOPT_QUOTE, array('CWD ' . $norm_root));
+				$this->apply_timeouts($ch, 0);
+
+				$res           = curl_exec($ch);
+				$errno         = curl_errno($ch);
+				$error         = curl_error($ch);
+				$response_code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+				curl_close($ch);
+
+				if ($res === false || ($response_code >= 400 && $response_code <= 599)) {
+					$detail   = sprintf(
+						/* translators: 1: Path, 2: Error */
+						esc_html__('Could not reach remote base path "%1$s": %2$s', 'filechi'),
+						$norm_root,
+						$this->map_curl_error($errno, $error, $response_code, 'Directory change failed')
+					);
+					$stages[] = array(
+						'name'   => 'directory',
+						'ok'     => false,
+						'detail' => $detail,
+					);
+					return array(
+						'success' => false,
+						'message' => sprintf(
+							/* translators: %s: Detail */
+							esc_html__('FTPS remote directory check failed: %s', 'filechi'),
+							$detail
+						),
+						'stages'  => $stages,
+						'details' => array(
+							'failed_stage'  => 'directory',
+							'curl_errno'    => $errno,
+							'response_code' => $response_code,
+						),
+					);
+				}
+
+				$stages[] = array(
+					'name'   => 'directory',
+					'ok'     => true,
+					'detail' => sprintf(
+						/* translators: %s: Remote path */
+						esc_html__('Remote path "%s" reached', 'filechi'),
+						$norm_root
+					),
+				);
+			} else {
+				$stages[] = array(
+					'name'   => 'directory',
+					'ok'     => true,
+					'detail' => esc_html__('Remote root directory reached', 'filechi'),
+				);
+			}
 		} else {
 			$stages[] = array(
 				'name'   => 'directory',

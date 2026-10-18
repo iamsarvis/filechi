@@ -312,6 +312,47 @@ class FileChi_REST extends WP_REST_Controller {
 			}
 		}
 
+		// Validate root_path and protected_path if provided
+		if (!empty($settings['root_path'])) {
+			try {
+				FileChi_Path::normalize_root($settings['root_path']);
+			} catch (FileChi_Path_Exception $e) {
+				return rest_ensure_response(
+					array(
+						'success' => false,
+						'message' => $e->getMessage(),
+						'stages'  => array(
+							array(
+								'name'   => 'directory',
+								'ok'     => false,
+								'detail' => $e->getMessage(),
+							),
+						),
+						'details' => array(
+							'reason'       => 'invalid_root_path',
+							'failed_stage' => 'directory',
+						),
+					)
+				);
+			}
+		}
+		if (!empty($settings['protected_path'])) {
+			try {
+				FileChi_Path::normalize_root($settings['protected_path']);
+			} catch (FileChi_Path_Exception $e) {
+				return rest_ensure_response(
+					array(
+						'success' => false,
+						'message' => $e->getMessage(),
+						'details' => array(
+							'reason'       => 'invalid_root_path',
+							'failed_stage' => 'directory',
+						),
+					)
+				);
+			}
+		}
+
 		$driver = null;
 
 		switch ($driver_type) {

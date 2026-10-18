@@ -25,8 +25,11 @@ $username     = $argv[3] ?? 'testuser';
 $password     = $argv[4] ?? 'testpass';
 $expected_pin = $argv[5] ?? '';
 
+$root_path    = $argv[6] ?? '/uploads';
+
 echo "=== FileChi FTPS Real Server Verification Suite ===\n";
 echo "Target: ftps://{$host}:{$port} (User: {$username})\n";
+echo "Absolute Root: {$root_path}\n";
 echo "Expected Server Pin: {$expected_pin}\n\n";
 
 // --- CHECK 1: Certificate Discovery ---
@@ -68,8 +71,8 @@ assert(isset($res_wrong['details']['curl_errno']) && $res_wrong['details']['curl
 assert(strpos($res_wrong['message'], 'PINNED KEY MISMATCH') !== false, 'Failure message must mention PINNED KEY MISMATCH');
 echo "  [+] PASS: Wrong pin was rejected with curl 90 (PINNED KEY MISMATCH)\n";
 
-// --- CHECK 3: Right Pin Acceptance (All 6 Stages) ---
-echo "[3/7] Testing Right Pin Connection (All 6 Stages)...\n";
+// --- CHECK 3: Right Pin Acceptance (All 6 Stages with Absolute Root) ---
+echo "[3/7] Testing Right Pin Connection (All 6 Stages with Absolute Root {$root_path})...\n";
 $driver_right = new FileChi_Storage_FTPS(array(
 	'host'      => $host,
 	'port'      => $port,
@@ -78,6 +81,7 @@ $driver_right = new FileChi_Storage_FTPS(array(
 	'ftps_mode' => 'explicit',
 	'tls_pin'   => $server_pin,
 	'passive'   => 1,
+	'root_path' => $root_path,
 ));
 
 $res_right = $driver_right->test_connection();
@@ -91,7 +95,8 @@ foreach ($expected_stages as $idx => $stage_name) {
 	assert($res_right['stages'][$idx]['name'] === $stage_name, "Stage {$idx} must be {$stage_name}");
 	assert($res_right['stages'][$idx]['ok'] === true, "Stage {$stage_name} must succeed: " . ($res_right['stages'][$idx]['detail'] ?? ''));
 }
-echo "  [+] PASS: All 6 stages succeeded with verified public key pin!\n";
+assert(strpos($res_right['stages'][3]['detail'], 'Remote path "' . $root_path . '" reached') !== false, "Directory stage must report reaching the exact absolute root path: {$res_right['stages'][3]['detail']}");
+echo "  [+] PASS: All 6 stages succeeded with verified public key pin and absolute root path '{$root_path}'!\n";
 
 // --- CHECK 4: Real Upload over Encrypted TLS Data Channel ---
 echo "[4/7] Testing Upload over FTPS TLS Data Channel...\n";

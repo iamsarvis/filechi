@@ -45,6 +45,8 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 				'path_style'    => 1,        // 1 for path-style (https://endpoint/bucket/key), 0 for virtual-hosted
 				'public_acl'    => 1,        // x-amz-acl: public-read on upload
 				'base_url'      => '',       // Optional CDN or custom domain URL
+				'key_prefix'    => '',       // Optional object key prefix
+				'root_path'     => '',       // Alias for key_prefix
 				'timeout'       => 30,
 			)
 		);
@@ -87,17 +89,47 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 	}
 
 	/**
+	 * Resolves and normalizes object key with configured key prefix or root path.
+	 *
+	 * @param string $key Object key.
+	 * @param bool   $is_probe Whether this is a probe key.
+	 * @return string
+	 * @throws FileChi_Path_Exception When prefix or key fails validation.
+	 */
+	public function resolve_key($key = '', $is_probe = false) {
+		$raw_prefix  = (string) ($this->settings['key_prefix'] ?? ($this->settings['root_path'] ?? ''));
+		$norm_prefix = '';
+		if ($raw_prefix !== '') {
+			$norm_prefix = FileChi_Path::normalize_root($raw_prefix);
+			$norm_prefix = trim($norm_prefix, '/');
+		}
+
+		if ($key === '') {
+			return $norm_prefix;
+		}
+
+		$is_probe_file = $is_probe || (strpos($key, '.filechi-probe') === 0) || (strpos($key, 'filechi-probe') === 0);
+		if ($is_probe_file) {
+			$clean_key = $key;
+		} else {
+			$clean_key = FileChi_Path::validate($key);
+		}
+
+		if ($norm_prefix === '') {
+			return $clean_key;
+		}
+
+		return $norm_prefix . '/' . $clean_key;
+	}
+
+	/**
 	 * Builds URI and Host based on path-style or virtual-hosted addressing.
 	 *
 	 * @param string $key Object key.
 	 * @return array [ 'url' => string, 'host' => string, 'uri_path' => string ]
 	 */
 	private function build_request_target($key = '') {
-		if ($key === '') {
-			$clean_key = '';
-		} else {
-			$clean_key = FileChi_Path::validate($key);
-		}
+		$clean_key = $this->resolve_key($key);
 		$bucket    = trim($this->settings['bucket']);
 		$endpoint  = $this->settings['endpoint'];
 
@@ -488,6 +520,22 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 	 */
 	public function test_connection() {
 		$start_time = microtime(true);
+
+		// Validate key prefix / root_path if configured
+		$raw_prefix = (string) ($this->settings['key_prefix'] ?? ($this->settings['root_path'] ?? ''));
+		if ($raw_prefix !== '') {
+			try {
+				$this->resolve_key('');
+			} catch (FileChi_Path_Exception $e) {
+				return array(
+					'success' => false,
+					'message' => sprintf(__('Invalid S3 key prefix: %s', 'filechi'), $e->getMessage()),
+					'details' => array(
+						'reason' => 'invalid_root_path',
+					),
+				);
+			}
+		}
 
 		if (empty($this->settings['endpoint'])) {
 			return array(

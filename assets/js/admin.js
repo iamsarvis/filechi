@@ -1023,6 +1023,7 @@
 							value: s.root_path || '',
 							onChange: (val) => updateSettingField('root_path', val),
 							placeholder: '/var/www/uploads or public_html/wp-files',
+							help: "Absolute (/home/user/files) or relative to the login directory. Do not use '..'.",
 						}),
 						el(TextControl, {
 							label: 'Protected Downloads Path (optional, outside web root)',
@@ -1089,6 +1090,7 @@
 							value: s.root_path || '',
 							onChange: (val) => updateSettingField('root_path', val),
 							placeholder: 'public_html/uploads',
+							help: "Absolute (/home/user/files) or relative to the login directory. Do not use '..'.",
 						}),
 						el(TextControl, {
 							label: 'Protected Downloads Path (optional, outside web root)',
