@@ -14,16 +14,89 @@ class FileChi_Activator {
 	/**
 	 * Database schema version.
 	 */
-	const DB_VERSION = '1.0.0';
+	const DB_VERSION = '1.1.0';
 
 	/**
 	 * Creates or upgrades custom database tables on activation.
 	 */
 	public static function activate() {
-		self::create_tables();
+		self::maybe_upgrade();
 		self::set_default_options();
+	}
 
-		update_option('filechi_db_version', self::DB_VERSION);
+	/**
+	 * Checks if schema upgrade is needed and runs upgrade routine behind a lock.
+	 *
+	 * @return bool True if up to date or upgrade succeeded, false if locked.
+	 */
+	public static function maybe_upgrade() {
+		$installed = (string) get_option('filechi_db_version', '0.0.0');
+
+		if (version_compare($installed, self::DB_VERSION, '>=')) {
+			return true;
+		}
+
+		// Concurrency guard: lock prevents parallel requests from executing migrations together
+		if (get_transient('filechi_db_upgrading')) {
+			return false;
+		}
+
+		set_transient('filechi_db_upgrading', time(), 300);
+
+		try {
+			self::create_tables();
+			self::run_migrations($installed);
+			update_option('filechi_db_version', self::DB_VERSION);
+			delete_option('filechi_db_upgrade_error');
+		} catch (\Throwable $e) {
+			update_option('filechi_db_upgrade_error', $e->getMessage());
+			if (function_exists('error_log')) {
+				error_log('FileChi DB Upgrade Failed: ' . $e->getMessage());
+			}
+		} finally {
+			delete_transient('filechi_db_upgrading');
+		}
+
+		return true;
+	}
+
+	/**
+	 * Runs incremental data migrations between schema versions.
+	 *
+	 * @param string $installed Currently installed DB version.
+	 */
+	public static function run_migrations($installed) {
+		if (version_compare($installed, '1.1.0', '<')) {
+			do_action('filechi_db_upgrade_1_1_0');
+		}
+	}
+
+	/**
+	 * Registers admin notice if an upgrade failure was recorded.
+	 */
+	public static function check_upgrade_notice() {
+		$error = get_option('filechi_db_upgrade_error');
+		if (!empty($error) && is_admin()) {
+			add_action('admin_notices', array(__CLASS__, 'render_upgrade_error_notice'));
+		}
+	}
+
+	/**
+	 * Renders admin notice for database upgrade error.
+	 */
+	public static function render_upgrade_error_notice() {
+		if (!current_user_can('manage_options')) {
+			return;
+		}
+		$error = get_option('filechi_db_upgrade_error');
+		if (empty($error)) {
+			return;
+		}
+		echo '<div class="notice notice-error is-dismissible"><p>' . esc_html(sprintf(
+			/* translators: %s: Error message */
+			__('FileChi database upgrade failed: %s. Please check server logs or re-activate the plugin.', 'filechi'),
+			$error
+		)) . '</p></div>';
 	}
 
 	/**

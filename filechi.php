@@ -108,6 +108,10 @@ function filechi_init() {
 	// Load textdomain for i18n
 	load_plugin_textdomain('filechi', false, dirname(plugin_basename(FILECHI_FILE)) . '/languages');
 
+	// Run database upgrade routine if schema is behind
+	FileChi_Activator::maybe_upgrade();
+	FileChi_Activator::check_upgrade_notice();
+
 	// Instantiate subsystems
 	new FileChi_Media();
 	new FileChi_WooCommerce();

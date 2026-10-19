@@ -422,7 +422,10 @@ if (!function_exists('wp_clear_scheduled_hook')) {
 }
 
 if (!function_exists('add_action')) {
-	function add_action($tag, $callback, $priority = 10, $accepted_args = 1) {}
+	function add_action($tag, $callback, $priority = 10, $accepted_args = 1) {
+		$GLOBALS['wp_actions'][$tag][] = $callback;
+		$GLOBALS['wp_filter'][$tag][$priority][] = $callback;
+	}
 }
 
 if (!function_exists('add_filter')) {
@@ -438,12 +441,23 @@ if (!function_exists('register_deactivation_hook')) {
 }
 
 if (!function_exists('do_action')) {
-	function do_action($tag, ...$args) {}
+	function do_action($tag, ...$args) {
+		$GLOBALS['did_action'][$tag] = ($GLOBALS['did_action'][$tag] ?? 0) + 1;
+		if (isset($GLOBALS['wp_filter'][$tag])) {
+			$priorities = $GLOBALS['wp_filter'][$tag];
+			ksort($priorities);
+			foreach ($priorities as $priority => $callbacks) {
+				foreach ($callbacks as $callback) {
+					call_user_func_array($callback, $args);
+				}
+			}
+		}
+	}
 }
 
 if (!function_exists('did_action')) {
 	function did_action($tag) {
-		return 0;
+		return $GLOBALS['did_action'][$tag] ?? 0;
 	}
 }
 
