@@ -108,6 +108,7 @@ class FileChi_Migration {
 
 			if (empty($attached_file)) {
 				FileChi_DB::log_transfer($attachment_id, $provider['id'], 'unknown', 0, 'failed', __('Missing _wp_attached_file meta.', 'filechi'));
+				FileChi_DB::record_file_state($attachment_id, $provider['id'], 'unknown', 'failed', array('size' => 0, 'last_error' => __('Missing _wp_attached_file meta.', 'filechi')));
 				continue;
 			}
 
