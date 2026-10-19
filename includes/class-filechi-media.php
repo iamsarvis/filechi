@@ -111,6 +111,7 @@ class FileChi_Media {
 			$file_path   = $attached_file ?: 'unknown';
 			$provider_id = !empty($provider['id']) ? (int) $provider['id'] : 0;
 			FileChi_DB::log_transfer($attachment_id, $provider_id, $file_path, 0, 'failed', __('credentials cannot be decrypted', 'filechi'));
+			FileChi_DB::record_file_state($attachment_id, $provider_id, $file_path, 'failed', array('size' => 0, 'last_error' => __('credentials cannot be decrypted', 'filechi')));
 			FileChi_Storage_Factory::create($provider);
 			return false;
 		}
@@ -228,6 +229,16 @@ class FileChi_Media {
 					'failed',
 					__('Protected WooCommerce file cannot be offloaded: SFTP/FTPS provider has no protected_path configured.', 'filechi')
 				);
+				FileChi_DB::record_file_state(
+					$attachment_id,
+					$provider['id'],
+					$attached_file,
+					'failed',
+					array(
+						'size'       => $main_size,
+						'last_error' => __('Protected WooCommerce file cannot be offloaded: SFTP/FTPS provider has no protected_path configured.', 'filechi'),
+					)
+				);
 				return false;
 			}
 		}
@@ -264,6 +275,7 @@ class FileChi_Media {
 				if ($success) {
 					$uploaded_files[$rel_path] = $abs_path;
 					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'transferred');
+					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'transferred', array('size' => $filesize));
 				} else {
 					$all_succeeded = false;
 					$reason        = $driver->get_last_error();
@@ -271,6 +283,7 @@ class FileChi_Media {
 						$reason = __('Upload or verification failed for remote storage.', 'filechi');
 					}
 					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'failed', $reason);
+					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'failed', array('size' => $filesize, 'last_error' => $reason));
 					update_post_meta($attachment_id, '_filechi_last_error', $reason);
 					break;
 				}
@@ -287,6 +300,7 @@ class FileChi_Media {
 							$remote_size
 						);
 						FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, max(0, $remote_size), 'failed', $reason);
+						FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'failed', array('size' => max(0, $remote_size), 'last_error' => $reason));
 						update_post_meta($attachment_id, '_filechi_last_error', $reason);
 						break;
 					}
@@ -294,12 +308,14 @@ class FileChi_Media {
 					// Count file as satisfied and log reconciled
 					$logged_size = ($remote_size >= 0) ? $remote_size : $expected_size;
 					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $logged_size, 'reconciled');
+					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'transferred', array('size' => $logged_size));
 				} else {
 					// Missing locally AND remotely: real failure, no retries
 					$all_succeeded  = false;
 					$is_unretryable = true;
 					$reason         = sprintf('File not found locally or remotely: %s', $rel_path);
 					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, 0, 'failed', $reason);
+					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'failed', array('size' => 0, 'last_error' => $reason));
 					update_post_meta($attachment_id, '_filechi_last_error', $reason);
 					break;
 				}
@@ -591,6 +607,11 @@ class FileChi_Media {
 	 * @param int $attachment_id Attachment ID being deleted.
 	 */
 	public function handle_delete_attachment($attachment_id) {
+		$attachment_id = absint($attachment_id);
+
+		// Deleting an attachment removes its file index rows (Item L1.4)
+		FileChi_DB::delete_attachment_files($attachment_id);
+
 		$settings = wp_parse_args(get_option('filechi_settings', array()), FileChi_Activator::default_settings());
 		if (!empty($settings['keep_remote_on_delete'])) {
 			return; // User configured to preserve remote copies

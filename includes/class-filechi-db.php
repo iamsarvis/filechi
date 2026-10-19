@@ -537,8 +537,8 @@ class FileChi_DB {
 		);
 
 		if ($existing) {
-			$existing_id       = (int) $existing['id'];
-			$existing_failures = (int) $existing['failures'];
+			$existing_id       = (int) ($existing['id'] ?? 0);
+			$existing_failures = (int) ($existing['failures'] ?? 0);
 
 			if (isset($args['failures']) && $args['failures'] !== null) {
 				$failures = absint($args['failures']);

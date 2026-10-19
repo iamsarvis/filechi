@@ -228,6 +228,14 @@ if (!class_exists('FileChi_DB')) {
 			}
 			return reset(self::$providers) ?: null;
 		}
+
+		public static function record_file_state($attachment_id, $provider_id, $local_path, $status, $args = array()) {
+			return 1;
+		}
+
+		public static function delete_attachment_files($attachment_id) {
+			return 1;
+		}
 	}
 }
 

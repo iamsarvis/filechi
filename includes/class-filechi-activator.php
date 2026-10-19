@@ -67,6 +67,9 @@ class FileChi_Activator {
 	 */
 	public static function run_migrations($installed) {
 		if (version_compare($installed, '1.1.0', '<')) {
+			if (!class_exists('FileChi_DB') && defined('FILECHI_DIR') && file_exists(FILECHI_DIR . 'includes/class-filechi-db.php')) {
+				require_once FILECHI_DIR . 'includes/class-filechi-db.php';
+			}
 			FileChi_DB::run_files_migration();
 			do_action('filechi_db_upgrade_1_1_0');
 		}
