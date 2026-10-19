@@ -109,6 +109,7 @@ class FileChi_Activator {
 
 		$table_providers = $wpdb->prefix . 'filechi_providers';
 		$table_logs      = $wpdb->prefix . 'filechi_logs';
+		$table_files     = $wpdb->prefix . 'filechi_files';
 
 		// Note: dbDelta requires two spaces after PRIMARY KEY and specific casing
 		$sql_providers = "CREATE TABLE {$table_providers} (
@@ -141,11 +142,33 @@ class FileChi_Activator {
   KEY status (status)
 ) {$charset_collate};";
 
+		$sql_files = "CREATE TABLE {$table_files} (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  attachment_id bigint(20) unsigned NOT NULL,
+  provider_id bigint(20) unsigned NOT NULL,
+  role varchar(10) NOT NULL DEFAULT 'primary',
+  local_path varchar(500) NOT NULL,
+  remote_key varchar(500) NOT NULL,
+  size bigint(20) unsigned DEFAULT NULL,
+  etag varchar(64) DEFAULT NULL,
+  status varchar(20) NOT NULL,
+  last_error text NULL,
+  failures smallint(5) unsigned NOT NULL DEFAULT 0,
+  created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  updated_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  PRIMARY KEY  (id),
+  UNIQUE KEY attachment_provider_local (attachment_id, provider_id, local_path(191)),
+  KEY provider_remote_status (provider_id, remote_key(191), status),
+  KEY attachment_id (attachment_id),
+  KEY status (status)
+) {$charset_collate};";
+
 		if (file_exists(ABSPATH . 'wp-admin/includes/upgrade.php')) {
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		}
 		dbDelta($sql_providers);
 		dbDelta($sql_logs);
+		dbDelta($sql_files);
 	}
 
 	/**

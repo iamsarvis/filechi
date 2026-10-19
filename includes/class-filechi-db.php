@@ -43,6 +43,16 @@ class FileChi_DB {
 	}
 
 	/**
+	 * Returns table name for files index.
+	 *
+	 * @return string
+	 */
+	public static function get_files_table() {
+		global $wpdb;
+		return $wpdb->prefix . 'filechi_files';
+	}
+
+	/**
 	 * Retrieves all connection providers.
 	 *
 	 * @param bool $decrypt Whether to decrypt sensitive settings fields.
