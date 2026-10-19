@@ -131,7 +131,9 @@ function filechi_init() {
 	}
 
 	// Handle background files migration batches via Action Scheduler
-	add_action('filechi_migrate_files_batch', array('FileChi_DB', 'run_files_migration'));
+	add_action('filechi_migrate_files_batch', function () {
+		FileChi_DB::run_files_migration();
+	});
 
 	// Handle secure time-limited downloads for SFTP/FTPS
 	add_action('init', 'filechi_handle_signed_download', 1);

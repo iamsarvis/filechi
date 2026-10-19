@@ -517,7 +517,7 @@ class FileChi_DB {
 
 		$remote_key = isset($args['remote_key']) && !empty($args['remote_key']) ? sanitize_text_field($args['remote_key']) : $local_path;
 		$role       = isset($args['role']) && !empty($args['role']) ? sanitize_key($args['role']) : 'primary';
-		$size       = isset($args['size']) && $args['size'] !== null ? (int) $args['size'] : null;
+		$size       = isset($args['size']) ? (int) $args['size'] : null;
 		$etag       = isset($args['etag']) && !empty($args['etag']) ? sanitize_text_field($args['etag']) : null;
 		$last_error = isset($args['last_error']) ? $args['last_error'] : null;
 		$now        = current_time('mysql');
@@ -525,8 +525,8 @@ class FileChi_DB {
 		$updated_at = !empty($args['updated_at']) ? $args['updated_at'] : $now;
 
 		// Check if record exists for this attachment_id, provider_id, and local_path
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		$existing = $wpdb->get_row(
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 			$wpdb->prepare(
 				"SELECT id, failures FROM {$table} WHERE attachment_id = %d AND provider_id = %d AND local_path = %s LIMIT 1",
 				$attachment_id,
@@ -535,12 +535,13 @@ class FileChi_DB {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ($existing) {
 			$existing_id       = (int) ($existing['id'] ?? 0);
 			$existing_failures = (int) ($existing['failures'] ?? 0);
 
-			if (isset($args['failures']) && $args['failures'] !== null) {
+			if (isset($args['failures'])) {
 				$failures = absint($args['failures']);
 			} elseif ($status === 'failed') {
 				$failures = $existing_failures + 1;
@@ -571,7 +572,7 @@ class FileChi_DB {
 			return ($res !== false) ? $existing_id : false;
 		}
 
-		$failures = isset($args['failures']) && $args['failures'] !== null ? absint($args['failures']) : ($status === 'failed' ? 1 : 0);
+		$failures = isset($args['failures']) ? absint($args['failures']) : ($status === 'failed' ? 1 : 0);
 
 		$insert_data = array(
 			'attachment_id' => $attachment_id,
@@ -640,7 +641,7 @@ class FileChi_DB {
 		$logs_table = self::get_logs_table();
 
 		// Fetch batch of rows ordered strictly by ID
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT id, attachment_id, provider_id, file_path, file_size, status, error_message, attempts, created_at, updated_at
@@ -653,6 +654,7 @@ class FileChi_DB {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (empty($rows)) {
 			$progress['completed'] = true;
