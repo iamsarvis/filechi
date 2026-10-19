@@ -187,6 +187,7 @@ FileChi stores all persistent data using WordPress core conventions with explici
 
 ### 5.1 Custom Database Tables
 - `{$wpdb->prefix}filechi_providers`: Stores remote storage configurations (SFTP, FTPS, S3/ArvanCloud/ParsPack) with encrypted credentials.
+- `{$wpdb->prefix}filechi_files`: Authoritative per-file state index recording offload status, local path, remote key, size, ETag, and failure counters.
 - `{$wpdb->prefix}filechi_logs`: Stores transfer/migration attempt rows and error reasons.
 
 ### 5.2 WordPress Options
@@ -194,9 +195,12 @@ FileChi stores all persistent data using WordPress core conventions with explici
 - `filechi_db_version`: Installed schema version.
 - `filechi_migration_status`: Current state of migration (`running`, `paused`, `completed`, `given_up`, `stopped`).
 - `filechi_protected_path_missing_notice`: Warning notice data when SFTP/FTPS protected path is unconfigured.
+- `filechi_files_migration_progress`: Progress tracker for one-time batched migration from `filechi_logs` to `filechi_files`.
+- `filechi_db_upgrade_error`: Error message recorded when an automated schema upgrade fails.
 
 ### 5.3 Transients & Lock Keys
 - `filechi_lock_{attachment_id}`: Per-attachment execution lock (stored in `wp_options` as `_transient_filechi_lock_*` and `_transient_timeout_filechi_lock_*`, 120s TTL). Cleaned up automatically on uninstall via `_transient_filechi_%` pattern.
+- `filechi_db_upgrading`: Concurrency lock transient (stored as `_transient_filechi_db_upgrading`, 300s TTL) preventing parallel database migrations.
 
 ### 5.4 Attachment Post Meta (`wp_postmeta`)
 - `_filechi_offloaded`: Flag (`1`) indicating all files belonging to the attachment are satisfied on remote storage.
@@ -210,6 +214,7 @@ FileChi stores all persistent data using WordPress core conventions with explici
 ### 5.5 Action Scheduler Scheduled Hooks
 - `filechi_process_migration_batch`: Group `filechi`.
 - `filechi_retry_attachment_offload`: Group `filechi`.
+- `filechi_migrate_files_batch`: Group `filechi`.
 
 ### 5.6 Uninstall Policy
 - **Default (`delete_data_on_uninstall = 0`):** Safe uninstall. Cancels all pending Action Scheduler hooks, clears all `filechi_lock_*` transients. Preserves tables, options, and postmeta. Remote storage files are never touched.
