@@ -248,15 +248,15 @@ class FileChi_Media {
 		$is_unretryable = false;
 		$uploaded_files = array();
 
-		// Retrieve existing log entries for this attachment and provider
-		$existing_logs = FileChi_DB::get_attachment_logs_by_file($attachment_id, $provider['id']);
+		// Retrieve existing file records for this attachment and provider from filechi_files (Item L1.5)
+		$existing_files = FileChi_DB::get_attachment_files_by_path($attachment_id, $provider['id']);
 
 		foreach ($files_to_process as $rel_path => $file_info) {
-			// Item 7.3: Do not redo finished work. Skip files whose log row for this provider
-			// is success/reconciled and whose remote copy still exists.
-			if (isset($existing_logs[$rel_path])) {
-				$prev_status = $existing_logs[$rel_path]['status'];
-				if ($prev_status === 'transferred' || $prev_status === 'reconciled') {
+			// Item 7.3 & L1.5: Do not redo finished work. Skip files whose file record for this provider
+			// is 'transferred' and whose remote copy still exists.
+			if (isset($existing_files[$rel_path])) {
+				$prev_status = $existing_files[$rel_path]['status'];
+				if ($prev_status === 'transferred') {
 					if ($driver->exists($rel_path)) {
 						// Already satisfied and remote copy confirmed: skip without re-uploading
 						continue;

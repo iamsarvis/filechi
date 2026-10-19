@@ -740,6 +740,44 @@ class FileChi_DB {
 	 * @param int $provider_id
 	 * @return array<string, array> Keyed by file_path.
 	 */
+	/**
+	 * Retrieves file index rows for an attachment and provider indexed by local path.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @param int $provider_id   Provider ID.
+	 * @return array<string, array> Keyed by local_path.
+	 */
+	public static function get_attachment_files_by_path($attachment_id, $provider_id) {
+		global $wpdb;
+		$table         = self::get_files_table();
+		$attachment_id = absint($attachment_id);
+		$provider_id   = absint($provider_id);
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$rows = $wpdb->get_results($wpdb->prepare("SELECT id, attachment_id, provider_id, role, local_path, remote_key, size, etag, status, last_error, failures, updated_at FROM {$table} WHERE attachment_id = %d AND provider_id = %d", $attachment_id, $provider_id), ARRAY_A);
+
+		if (!is_array($rows)) {
+			return array();
+		}
+
+		$by_file = array();
+		foreach ($rows as $row) {
+			$path = isset($row['local_path']) ? $row['local_path'] : ($row['file_path'] ?? '');
+			if ($path !== '') {
+				$by_file[$path] = $row;
+			}
+		}
+
+		return $by_file;
+	}
+
+	/**
+	 * Retrieves transfer log rows for an attachment and provider indexed by relative file path.
+	 *
+	 * @param int $attachment_id
+	 * @param int $provider_id
+	 * @return array<string, array> Keyed by file_path.
+	 */
 	public static function get_attachment_logs_by_file($attachment_id, $provider_id) {
 		global $wpdb;
 		$table = self::get_logs_table();
@@ -763,18 +801,21 @@ class FileChi_DB {
 
 	/**
 	 * Checks whether a given relative storage key has been transferred to a provider.
+	 * Reads authoritatively from filechi_files index table.
 	 *
 	 * @param int    $provider_id Provider ID.
 	 * @param string $file_path   Relative storage key.
-	 * @return bool True if a transferred log record exists for this provider, false otherwise.
+	 * @return bool True if a transferred file record exists for this provider, false otherwise.
 	 */
 	public static function is_file_transferred($provider_id, $file_path) {
 		global $wpdb;
-		$table       = self::get_logs_table();
+		$table       = self::get_files_table();
 		$provider_id = absint($provider_id);
+		$file_path   = sanitize_text_field($file_path);
 
+		// Check against remote_key and local_path with status = 'transferred'
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$status = $wpdb->get_var($wpdb->prepare("SELECT status FROM {$table} WHERE provider_id = %d AND file_path = %s AND status = 'transferred' LIMIT 1", $provider_id, $file_path));
+		$status = $wpdb->get_var($wpdb->prepare("SELECT status FROM {$table} WHERE provider_id = %d AND (remote_key = %s OR local_path = %s) AND status = 'transferred' LIMIT 1", $provider_id, $file_path, $file_path));
 
 		return !empty($status);
 	}
@@ -883,7 +924,7 @@ class FileChi_DB {
 	 */
 	public static function get_migration_stats() {
 		global $wpdb;
-		$logs_table = self::get_logs_table();
+		$files_table = self::get_files_table();
 
 		// Total attachments in WordPress
 		$total_attachments = (int) $wpdb->get_var(
@@ -895,13 +936,13 @@ class FileChi_DB {
 			"SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE meta_key = '_filechi_offloaded' AND meta_value = '1'"
 		);
 
-		// Total bytes transferred or reconciled
+		// Total bytes transferred on remote storage (from filechi_files)
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$total_bytes = (double) $wpdb->get_var("SELECT SUM(file_size) FROM {$logs_table} WHERE status IN ('transferred', 'reconciled')");
+		$total_bytes = (double) $wpdb->get_var("SELECT SUM(size) FROM {$files_table} WHERE status = 'transferred'");
 
-		// Failed count
+		// Failed count (from filechi_files)
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$failed_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$logs_table} WHERE status = 'failed'");
+		$failed_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$files_table} WHERE status = 'failed'");
 
 		// Given-up attachments count
 		$given_up_count = self::get_given_up_attachment_count();

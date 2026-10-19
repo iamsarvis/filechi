@@ -209,8 +209,8 @@ class Test_Download_WPDB {
 
 	public function get_var($query) {
 		global $mock_transferred_logs;
-		// Check is_file_transferred query
-		if (preg_match("/WHERE provider_id = (\d+) AND file_path = '([^']+)' AND status = 'transferred'/", $query, $m)) {
+		// Check is_file_transferred query (matches filechi_files and legacy logs queries)
+		if (preg_match("/WHERE provider_id = (\d+).*(?:file_path|remote_key|local_path) = '([^']+)'.*status = 'transferred'/", $query, $m)) {
 			$key = $m[1] . '|' . stripslashes($m[2]);
 			return !empty($mock_transferred_logs[$key]) ? 'transferred' : null;
 		}
