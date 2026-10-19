@@ -21,11 +21,17 @@ assert(is_array($data['woocommerce']), 'woocommerce must be an array');
 assert($data['woocommerce']['active'] === false, 'WooCommerce active should be false when not loaded');
 assert($data['woocommerce']['version'] === '', 'WooCommerce version should be empty when not loaded');
 assert($data['woocommerce']['hpos_enabled'] === false, 'HPOS should be false when not loaded');
+assert(isset($data['wc']) && is_array($data['wc']), 'wc data alias must be present');
+assert($data['wc']['active'] === false, 'wc active should match woocommerce active');
+assert(isset($data['integrations']) && is_array($data['integrations']), 'integrations list must be present');
+assert(count($data['integrations']) === 1, 'integrations list should contain 1 integration today');
+assert($data['integrations'][0]['id'] === 'woocommerce', 'first integration must be woocommerce');
+assert($data['integrations'][0]['active'] === false, 'woocommerce integration should be inactive when not loaded');
 assert(!empty($data['restUrl']), 'restUrl must be non-empty');
 assert(!empty($data['nonce']), 'nonce must be non-empty');
 echo "PASS: Localized data structure verified when WooCommerce is absent.\n";
 
-echo "\n=== 2. Test protected path admin notice render ===\n";
+echo "\n=== 2. Test protected path admin notice when WooCommerce is INACTIVE ===\n";
 $GLOBALS['mock_current_user_caps']['manage_options'] = true;
 update_option('filechi_protected_path_missing_notice', array(
 	'attachment_id' => 123,
@@ -34,15 +40,42 @@ update_option('filechi_protected_path_missing_notice', array(
 
 ob_start();
 $admin->render_admin_notices();
-$output = ob_get_clean();
+$output_inactive = ob_get_clean();
 
-assert(strpos($output, 'filechi-protected-notice') !== false, 'Notice element ID must be rendered');
-assert(strpos($output, 'Test SFTP') !== false, 'Provider name must be rendered in notice');
-assert(strpos($output, 'attachment #123') !== false, 'Attachment ID must be rendered in notice');
-assert(strpos($output, 'filechi_dismiss_protected_notice') !== false, 'Inline script must reference dismissal action');
-echo "PASS: Admin notice renders with inline script and dismissal action.\n";
+assert(empty($output_inactive), 'Notice must NOT be rendered when WooCommerce is inactive');
+assert(get_option('filechi_protected_path_missing_notice') === false, 'Notice option must be deleted when WooCommerce is inactive');
+echo "PASS: Protected path notice is hidden and option is deleted when WooCommerce is inactive.\n";
 
-echo "\n=== 3. Test protected path notice AJAX dismissal ===\n";
+echo "\n=== 3. Test localized data & notice when WooCommerce is ACTIVE ===\n";
+if (!class_exists('WooCommerce')) {
+	class WooCommerce {
+		/** @var string */
+		public $version = '9.5.0';
+	}
+}
+
+$data_active = $admin->get_admin_data();
+assert($data_active['woocommerce']['active'] === true, 'WooCommerce active should be true when class exists');
+assert($data_active['wc']['active'] === true, 'wc active alias should be true when class exists');
+assert($data_active['integrations'][0]['active'] === true, 'integrations active should be true when class exists');
+
+// Set notice again with active WooCommerce
+update_option('filechi_protected_path_missing_notice', array(
+	'attachment_id' => 123,
+	'provider_name' => 'Test SFTP',
+));
+
+ob_start();
+$admin->render_admin_notices();
+$output_active = ob_get_clean();
+
+assert(strpos($output_active, 'filechi-protected-notice') !== false, 'Notice element ID must be rendered when WooCommerce is active');
+assert(strpos($output_active, 'Test SFTP') !== false, 'Provider name must be rendered in notice');
+assert(strpos($output_active, 'attachment #123') !== false, 'Attachment ID must be rendered in notice');
+assert(strpos($output_active, 'filechi_dismiss_protected_notice') !== false, 'Inline script must reference dismissal action');
+echo "PASS: Localized data and admin notice render correctly when WooCommerce is active.\n";
+
+echo "\n=== 4. Test protected path notice AJAX dismissal ===\n";
 $_POST['nonce'] = wp_create_nonce('filechi_admin_nonce');
 $_REQUEST['nonce'] = $_POST['nonce'];
 
@@ -50,7 +83,7 @@ $admin->ajax_dismiss_protected_notice();
 assert(get_option('filechi_protected_path_missing_notice') === false, 'Notice option must be deleted after dismissal');
 echo "PASS: AJAX handler successfully dismissed notice option.\n";
 
-echo "\n=== 4. Test automatic notice deletion on provider save with protected_path ===\n";
+echo "\n=== 5. Test automatic notice deletion on provider save with protected_path ===\n";
 global $wpdb;
 $wpdb = new Mock_WPDB();
 
