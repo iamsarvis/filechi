@@ -399,6 +399,17 @@ assert(
 );
 echo "Offloaded file used non-default provider (provider 3): PASS\n";
 
+// 5.5.4b: offloaded signed file download method must be forced to 'redirect'
+echo "Testing download method override to redirect for offloaded files...\n";
+assert($wc->filter_download_method('force', 456, $signed_url) === 'redirect', 'Signed S3 URL must force redirect method');
+assert($wc->filter_download_method('force', 123, $non_offloaded_rel) === 'force', 'Local non-offloaded file must keep force method');
+$proxy_url = 'http://localhost/wp/?filechi_action=download&filechi_file=woocommerce_uploads%2Ftest.zip&filechi_token=abc';
+assert($wc->filter_download_method('force', 789, $proxy_url) === 'redirect', 'FileChi proxy URL must force redirect method');
+assert($wc->is_filechi_download($signed_url) === true, 'Signed S3 URL must be recognized as FileChi download');
+assert($wc->is_filechi_download($proxy_url) === true, 'Proxy URL must be recognized as FileChi download');
+assert($wc->is_filechi_download('https://example.com/wp-content/uploads/test.pdf') === false, 'Standard upload URL must not be recognized as FileChi download');
+echo "Download method override to redirect: PASS\n";
+
 // 5.5.5: a regular upload path is never treated as protected
 echo "Testing regular upload paths are never treated as protected...\n";
 assert(FileChi_Media::is_protected_file('2026/10/regular-image.jpg') === false);

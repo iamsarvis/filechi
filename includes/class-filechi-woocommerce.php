@@ -14,6 +14,13 @@ defined('ABSPATH') || exit;
 class FileChi_WooCommerce {
 
 	/**
+	 * Tracked signed URLs generated in current request.
+	 *
+	 * @var array<string, bool>
+	 */
+	private $signed_urls = array();
+
+	/**
 	 * Constructor.
 	 */
 	public function __construct() {
@@ -22,6 +29,12 @@ class FileChi_WooCommerce {
 
 		// Hook downloadable product file resolution
 		add_filter('woocommerce_file_download_path', array($this, 'filter_download_path'), 20, 3);
+
+		// Force redirect mode for offloaded/signed downloads
+		add_filter('woocommerce_file_download_method', array($this, 'filter_download_method'), 20, 3);
+
+		// Intercept force downloads before WooCommerce tries local file reading
+		add_action('woocommerce_download_file_force', array($this, 'handle_force_download'), 5, 2);
 	}
 
 	/**
@@ -93,10 +106,76 @@ class FileChi_WooCommerce {
 
 		try {
 			// Return time-limited signed download URL
-			return $driver->get_signed_url($relative_key, $expiry);
+			$signed_url = $driver->get_signed_url($relative_key, $expiry);
+			$this->signed_urls[$signed_url] = true;
+			return $signed_url;
 		} catch (\Exception $e) {
 			return $file_path;
 		}
+	}
+
+	/**
+	 * Forces redirect download method for FileChi offloaded and signed downloads.
+	 *
+	 * Prevents WooCommerce from attempting a local filesystem read (Force Download)
+	 * on remote or streaming proxy URLs which results in "File not found".
+	 *
+	 * @param string     $method     Current download method ('force', 'xsendfile', 'redirect').
+	 * @param int|string $product_id Product ID.
+	 * @param string     $file_path  File path or URL.
+	 * @return string
+	 */
+	public function filter_download_method($method, $product_id, $file_path) {
+		if ($this->is_filechi_download($file_path)) {
+			return 'redirect';
+		}
+
+		return $method;
+	}
+
+	/**
+	 * Intercepts forced downloads for FileChi signed or offloaded files to prevent
+	 * WooCommerce from treating them as local server files and dying with "File not found".
+	 *
+	 * @param string $file_path File path or URL.
+	 * @param string $filename  File name.
+	 * @return void
+	 */
+	public function handle_force_download($file_path, $filename = '') {
+		if ($this->is_filechi_download($file_path)) {
+			header('Location: ' . $file_path);
+			exit;
+		}
+	}
+
+	/**
+	 * Determines whether a file path/URL represents a FileChi offloaded or signed download.
+	 *
+	 * @param mixed $file_path File path or URL.
+	 * @return bool
+	 */
+	public function is_filechi_download($file_path) {
+		if (!is_string($file_path) || $file_path === '') {
+			return false;
+		}
+
+		// Tracked URLs generated in this request by filter_download_path
+		if (!empty($this->signed_urls[$file_path])) {
+			return true;
+		}
+
+		// FileChi streaming proxy action
+		if (strpos($file_path, 'filechi_action=download') !== false) {
+			return true;
+		}
+
+		// S3 presigned URLs (AWS / ArvanCloud / ParsPack)
+		if ((strpos($file_path, 'http://') === 0 || strpos($file_path, 'https://') === 0)
+			&& (strpos($file_path, 'X-Amz-Signature=') !== false || strpos($file_path, 'Signature=') !== false)) {
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
