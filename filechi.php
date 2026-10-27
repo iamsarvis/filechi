@@ -108,6 +108,10 @@ function filechi_init() {
 	// Load textdomain for i18n
 	load_plugin_textdomain('filechi', false, dirname(plugin_basename(FILECHI_FILE)) . '/languages');
 
+	// Run database upgrade routine if schema is behind
+	FileChi_Activator::maybe_upgrade();
+	FileChi_Activator::check_upgrade_notice();
+
 	// Instantiate subsystems
 	new FileChi_Media();
 	new FileChi_WooCommerce();
@@ -125,6 +129,11 @@ function filechi_init() {
 		require_once FILECHI_DIR . 'includes/class-filechi-admin.php';
 		new FileChi_Admin();
 	}
+
+	// Handle background files migration batches via Action Scheduler
+	add_action('filechi_migrate_files_batch', function () {
+		FileChi_DB::run_files_migration();
+	});
 
 	// Handle secure time-limited downloads for SFTP/FTPS
 	add_action('init', 'filechi_handle_signed_download', 1);

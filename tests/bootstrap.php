@@ -422,7 +422,10 @@ if (!function_exists('wp_clear_scheduled_hook')) {
 }
 
 if (!function_exists('add_action')) {
-	function add_action($tag, $callback, $priority = 10, $accepted_args = 1) {}
+	function add_action($tag, $callback, $priority = 10, $accepted_args = 1) {
+		$GLOBALS['wp_actions'][$tag][] = $callback;
+		$GLOBALS['wp_filter'][$tag][$priority][] = $callback;
+	}
 }
 
 if (!function_exists('add_filter')) {
@@ -438,12 +441,23 @@ if (!function_exists('register_deactivation_hook')) {
 }
 
 if (!function_exists('do_action')) {
-	function do_action($tag, ...$args) {}
+	function do_action($tag, ...$args) {
+		$GLOBALS['did_action'][$tag] = ($GLOBALS['did_action'][$tag] ?? 0) + 1;
+		if (isset($GLOBALS['wp_filter'][$tag])) {
+			$priorities = $GLOBALS['wp_filter'][$tag];
+			ksort($priorities);
+			foreach ($priorities as $priority => $callbacks) {
+				foreach ($callbacks as $callback) {
+					call_user_func_array($callback, $args);
+				}
+			}
+		}
+	}
 }
 
 if (!function_exists('did_action')) {
 	function did_action($tag) {
-		return 0;
+		return $GLOBALS['did_action'][$tag] ?? 0;
 	}
 }
 
@@ -490,6 +504,12 @@ if (!class_exists('Mock_WPDB')) {
 
 		public function get_var($query) {
 			$this->queries[] = $query;
+			if ($this->get_var_override !== null) {
+				if (is_callable($this->get_var_override)) {
+					return call_user_func($this->get_var_override, $query);
+				}
+				return $this->get_var_override;
+			}
 			if (strpos($query, 'COUNT(*)') !== false) {
 				if (preg_match("/meta_value = '?(\d+)'?/", $query, $m)) {
 					$pid = (int) $m[1];
@@ -543,6 +563,7 @@ if (!class_exists('Mock_WPDB')) {
 
 		public $get_row_override     = null;
 		public $get_results_override = null;
+		public $get_var_override     = null;
 		public $on_insert            = null;
 		public $on_update            = null;
 		public $insert_id            = 1;
@@ -550,6 +571,9 @@ if (!class_exists('Mock_WPDB')) {
 		public function get_row($query, $output = 'ARRAY_A') {
 			$this->queries[] = $query;
 			if ($this->get_row_override !== null) {
+				if (is_callable($this->get_row_override)) {
+					return call_user_func($this->get_row_override, $query, $output);
+				}
 				return $this->get_row_override;
 			}
 			return null;

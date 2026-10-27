@@ -32,6 +32,15 @@ if (!class_exists('FileChi_DB')) {
 		public static function get_attachment_logs_by_file($attachment_id, $provider_id) {
 			return array();
 		}
+		public static function get_attachment_files_by_path($attachment_id, $provider_id) {
+			return array();
+		}
+		public static function record_file_state($attachment_id, $provider_id, $local_path, $status, $args = array()) {
+			return 1;
+		}
+		public static function delete_attachment_files($attachment_id) {
+			return 1;
+		}
 	}
 }
 

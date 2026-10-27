@@ -53,19 +53,21 @@ echo "\n=== 2. Uninstall with delete_data_on_uninstall = 1 (Opt-in full wipe) ==
 $wpdb->queries          = array();
 $GLOBALS['mock_options'] = array(
 	'filechi_settings'                      => array('delete_data_on_uninstall' => 1),
-	'filechi_db_version'                    => '1.0.0',
+	'filechi_db_version'                    => '1.1.0',
 	'filechi_migration_status'              => 'idle',
 	'filechi_protected_path_missing_notice' => array('attachment_id' => 1),
+	'filechi_files_migration_progress'      => array('last_id' => 5),
+	'filechi_db_upgrade_error'              => 'some error',
 );
 
 filechi_uninstall_site();
 
-// Check: tables must be dropped
+// Check: tables must be dropped (filechi_files, filechi_logs, filechi_providers)
 $dropped_tables = array_filter($wpdb->queries, function($q) {
 	return stripos($q, 'DROP TABLE') !== false;
 });
-echo 'Tables dropped when delete_data_on_uninstall is 1: ' . count($dropped_tables) . ' (Expected: 2) -> ' . (count($dropped_tables) === 2 ? 'PASS' : 'FAIL') . "\n";
-assert(count($dropped_tables) === 2);
+echo 'Tables dropped when delete_data_on_uninstall is 1: ' . count($dropped_tables) . ' (Expected: 3) -> ' . (count($dropped_tables) === 3 ? 'PASS' : 'FAIL') . "\n";
+assert(count($dropped_tables) === 3);
 
 // Check: options must be deleted
 echo 'filechi_settings deleted: ' . (!isset($GLOBALS['mock_options']['filechi_settings']) ? 'PASS' : 'FAIL') . "\n";
@@ -74,6 +76,8 @@ assert(!isset($GLOBALS['mock_options']['filechi_settings']));
 assert(!isset($GLOBALS['mock_options']['filechi_db_version']));
 assert(!isset($GLOBALS['mock_options']['filechi_migration_status']));
 assert(!isset($GLOBALS['mock_options']['filechi_protected_path_missing_notice']));
+assert(!isset($GLOBALS['mock_options']['filechi_files_migration_progress']));
+assert(!isset($GLOBALS['mock_options']['filechi_db_upgrade_error']));
 
 // Check: postmeta deleted
 $deleted_postmeta = array_filter($wpdb->queries, function($q) {
@@ -95,5 +99,6 @@ echo 'Deactivation cleared Action Scheduler migration batch: ' . (!empty($GLOBAL
 echo 'Deactivation cleared WP-Cron hooks: ' . (in_array('filechi_process_migration_batch', $GLOBALS['mock_scheduled_hooks_cleared']) ? 'PASS' : 'FAIL') . "\n";
 assert(!empty($GLOBALS['mock_unscheduled_actions']));
 assert(in_array('filechi_process_migration_batch', $GLOBALS['mock_scheduled_hooks_cleared']));
+assert(in_array('filechi_migrate_files_batch', $GLOBALS['mock_scheduled_hooks_cleared']));
 
 echo "\nALL UNINSTALL TESTS PASSED!\n";

@@ -24,9 +24,11 @@ function filechi_uninstall_site() {
 	if ( function_exists( 'as_unschedule_all_actions' ) ) {
 		as_unschedule_all_actions( 'filechi_process_migration_batch', array(), 'filechi' );
 		as_unschedule_all_actions( 'filechi_retry_attachment_offload', array(), 'filechi' );
+		as_unschedule_all_actions( 'filechi_migrate_files_batch', array(), 'filechi' );
 	}
 	wp_clear_scheduled_hook( 'filechi_process_migration_batch' );
 	wp_clear_scheduled_hook( 'filechi_retry_attachment_offload' );
+	wp_clear_scheduled_hook( 'filechi_migrate_files_batch' );
 
 	// Delete all FileChi transients using esc_like to safely escape '_' in SQL
 	$transient_pattern = $wpdb->esc_like( '_transient_filechi_' ) . '%';
@@ -55,6 +57,8 @@ function filechi_uninstall_site() {
 
 	// Drop custom database tables
 	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.DirectQuery -- Necessary cleanup on opt-in plugin uninstall.
+	$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}filechi_files" );
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.DirectQuery -- Necessary cleanup on opt-in plugin uninstall.
 	$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}filechi_logs" );
 	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.DirectQuery -- Necessary cleanup on opt-in plugin uninstall.
 	$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}filechi_providers" );
@@ -64,6 +68,8 @@ function filechi_uninstall_site() {
 	delete_option( 'filechi_db_version' );
 	delete_option( 'filechi_migration_status' );
 	delete_option( 'filechi_protected_path_missing_notice' );
+	delete_option( 'filechi_files_migration_progress' );
+	delete_option( 'filechi_db_upgrade_error' );
 
 	// Clean up any remaining plugin options matching filechi_%
 	$opt_pattern = $wpdb->esc_like( 'filechi_' ) . '%';
