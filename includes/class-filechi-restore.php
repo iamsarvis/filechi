@@ -577,6 +577,24 @@ class FileChi_Restore {
 
 				if ($recorded_size >= 0 && $actual_size !== $recorded_size) {
 					// Exists with a different size: do NOT overwrite, record local_conflict
+					FileChi_DB::log_transfer(
+						$attachment_id,
+						$provider_id,
+						$clean_local,
+						$actual_size,
+						'failed',
+						__('Local file exists with conflicting size; not overwritten.', 'filechi')
+					);
+					FileChi_DB::record_file_state(
+						$attachment_id,
+						$provider_id,
+						$clean_local,
+						'failed',
+						array(
+							'size'       => $actual_size,
+							'last_error' => 'local_conflict',
+						)
+					);
 					return 'local_conflict';
 				}
 
@@ -588,7 +606,15 @@ class FileChi_Restore {
 				continue;
 			}
 
-			// Local file missing: prepare directory and download
+			// Local file missing: check disk space before large files (>=10MB)
+			if (function_exists('disk_free_space') && $recorded_size >= 10485760) {
+				$file_free = @disk_free_space($parent_dir);
+				if ($file_free !== false && $file_free < ($recorded_size + 10485760)) {
+					return 'insufficient_disk_space';
+				}
+			}
+
+			// Prepare directory and download
 			if (!is_dir($parent_dir)) {
 				if (function_exists('wp_mkdir_p')) {
 					wp_mkdir_p($parent_dir);
@@ -619,6 +645,24 @@ class FileChi_Restore {
 			$downloaded_size = (int) filesize($temp_file);
 			if ($recorded_size >= 0 && $downloaded_size !== $recorded_size) {
 				@unlink($temp_file);
+				FileChi_DB::log_transfer(
+					$attachment_id,
+					$provider_id,
+					$clean_local,
+					$downloaded_size,
+					'failed',
+					sprintf(__('Downloaded size (%1$d) did not match recorded size (%2$d).', 'filechi'), $downloaded_size, $recorded_size)
+				);
+				FileChi_DB::record_file_state(
+					$attachment_id,
+					$provider_id,
+					$clean_local,
+					'failed',
+					array(
+						'size'       => $downloaded_size,
+						'last_error' => 'size_mismatch',
+					)
+				);
 				return 'size_mismatch';
 			}
 
@@ -628,6 +672,24 @@ class FileChi_Restore {
 				$file_md5 = md5_file($temp_file);
 				if ($file_md5 !== false && strtolower($file_md5) !== strtolower($etag)) {
 					@unlink($temp_file);
+					FileChi_DB::log_transfer(
+						$attachment_id,
+						$provider_id,
+						$clean_local,
+						$downloaded_size,
+						'failed',
+						sprintf(__('Downloaded file MD5 (%1$s) did not match S3 ETag (%2$s).', 'filechi'), $file_md5, $etag)
+					);
+					FileChi_DB::record_file_state(
+						$attachment_id,
+						$provider_id,
+						$clean_local,
+						'failed',
+						array(
+							'size'       => $downloaded_size,
+							'last_error' => 'etag_mismatch',
+						)
+					);
 					return 'etag_mismatch';
 				}
 			}
