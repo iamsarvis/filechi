@@ -7,7 +7,10 @@
  */
 
 $test_dir = __DIR__;
-$test_files = glob($test_dir . '/test_*.php');
+$test_files = array_merge(
+	glob($test_dir . '/test_*.php') ?: array(),
+	glob($test_dir . '/real/test_*.php') ?: array()
+);
 sort($test_files);
 
 if (empty($test_files)) {
@@ -27,7 +30,7 @@ echo "========================================================\n\n";
 $start_time = microtime(true);
 
 foreach ($test_files as $file) {
-	$basename = basename($file);
+	$basename = str_replace(array($test_dir . DIRECTORY_SEPARATOR, $test_dir . '/'), '', $file);
 
 	// Read label header (MOCK or REAL)
 	$content = file_get_contents($file);

@@ -19,24 +19,33 @@ $next_id     = 1;
 $wpdb->get_row_override = null;
 $orig_get_row = function($query) use (&$files_store) {
 	if (strpos($query, 'FROM wp_filechi_files') !== false) {
-		if (preg_match('/attachment_id = (\d+) AND provider_id = (\d+) AND local_path = \'([^\']+)\'/', $query, $m)) {
+		if (preg_match('/attachment_id = (\d+) AND provider_id = (\d+) AND (?:path_hash|local_path) = \'([^\']+)\'/', $query, $m)) {
 			$aid  = (int) $m[1];
 			$pid  = (int) $m[2];
-			$path = $m[3];
-			$key  = "{$aid}_{$pid}_{$path}";
-			return $files_store[$key] ?? null;
+			$target = $m[3];
+			foreach ($files_store as $row) {
+				if ((int) $row['attachment_id'] === $aid && (int) $row['provider_id'] === $pid) {
+					if (($row['path_hash'] ?? '') === $target || ($row['local_path'] ?? '') === $target) {
+						return $row;
+					}
+				}
+			}
 		}
 	}
 	return null;
 };
 
-$wpdb->on_insert = function($table, $data) use (&$files_store, &$next_id) {
+$wpdb->on_insert = function($table, $data) use (&$files_store, &$next_id, $wpdb) {
 	if (strpos($table, 'filechi_files') !== false) {
 		$aid  = (int) $data['attachment_id'];
 		$pid  = (int) $data['provider_id'];
 		$path = $data['local_path'];
 		$key  = "{$aid}_{$pid}_{$path}";
 		$data['id'] = $next_id++;
+		$wpdb->insert_id = $data['id'];
+		if (empty($data['path_hash'])) {
+			$data['path_hash'] = sha1($path);
+		}
 		$files_store[$key] = $data;
 	}
 };
@@ -145,5 +154,26 @@ assert(count($files_store) === 1);
 assert(!isset($files_store['201_1_2026/10/banner.jpg']));
 assert(!isset($files_store['201_1_2026/10/banner-300x200.jpg']));
 assert(isset($files_store['202_1_2026/10/other.jpg']));
+
+echo "\n=== 4. Test C2 Long Paths (250-character paths differing in last 10 characters) ===\n";
+$prefix_240  = str_repeat('a', 240);
+$path_long_1 = $prefix_240 . '1234567890.jpg';
+$path_long_2 = $prefix_240 . 'abcdefghij.jpg';
+
+assert(strlen($path_long_1) === 254);
+assert(strlen($path_long_2) === 254);
+assert(substr($path_long_1, 0, 191) === substr($path_long_2, 0, 191), 'Both paths must share first 191 characters');
+
+$id_long1 = FileChi_DB::record_file_state(301, 1, $path_long_1, 'transferred', array('size' => 1000));
+$id_long2 = FileChi_DB::record_file_state(301, 1, $path_long_2, 'transferred', array('size' => 2000));
+
+echo 'Both long paths inserted with different IDs: ' . ($id_long1 !== $id_long2 ? 'PASS' : 'FAIL') . "\n";
+assert($id_long1 !== $id_long2, 'Long paths sharing first 191 chars must not collide');
+
+$long_rows = array_filter($files_store, function($r) {
+	return (int) $r['attachment_id'] === 301;
+});
+echo 'Two distinct rows created for the two long paths: ' . (count($long_rows) === 2 ? 'PASS' : 'FAIL') . "\n";
+assert(count($long_rows) === 2, 'Two rows must exist for the two distinct 250-character paths');
 
 echo "\nALL FILE STATE RECORDING TESTS PASSED!\n";

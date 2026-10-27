@@ -512,8 +512,9 @@ class FileChi_DB {
 
 		$attachment_id = absint($attachment_id);
 		$provider_id   = absint($provider_id);
-		$local_path    = sanitize_text_field($local_path);
-		$status        = sanitize_key($status);
+		$local_path = sanitize_text_field($local_path);
+		$path_hash  = sha1($local_path);
+		$status     = sanitize_key($status);
 
 		$remote_key = isset($args['remote_key']) && !empty($args['remote_key']) ? sanitize_text_field($args['remote_key']) : $local_path;
 		$role       = isset($args['role']) && !empty($args['role']) ? sanitize_key($args['role']) : 'primary';
@@ -524,14 +525,14 @@ class FileChi_DB {
 		$created_at = !empty($args['created_at']) ? $args['created_at'] : $now;
 		$updated_at = !empty($args['updated_at']) ? $args['updated_at'] : $now;
 
-		// Check if record exists for this attachment_id, provider_id, and local_path
+		// Check if record exists for this attachment_id, provider_id, and path_hash
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
 		$existing = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT id, failures FROM {$table} WHERE attachment_id = %d AND provider_id = %d AND local_path = %s LIMIT 1",
+				"SELECT id, failures FROM {$table} WHERE attachment_id = %d AND provider_id = %d AND path_hash = %s LIMIT 1",
 				$attachment_id,
 				$provider_id,
-				$local_path
+				$path_hash
 			),
 			ARRAY_A
 		);
@@ -551,13 +552,15 @@ class FileChi_DB {
 
 			$update_data = array(
 				'role'       => $role,
+				'local_path' => $local_path,
 				'remote_key' => $remote_key,
+				'path_hash'  => $path_hash,
 				'status'     => $status,
 				'last_error' => $last_error,
 				'failures'   => $failures,
 				'updated_at' => $updated_at,
 			);
-			$format = array('%s', '%s', '%s', '%s', '%d', '%s');
+			$format = array('%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s');
 
 			if ($size !== null) {
 				$update_data['size'] = $size;
@@ -580,13 +583,14 @@ class FileChi_DB {
 			'role'          => $role,
 			'local_path'    => $local_path,
 			'remote_key'    => $remote_key,
+			'path_hash'     => $path_hash,
 			'status'        => $status,
 			'last_error'    => $last_error,
 			'failures'      => $failures,
 			'created_at'    => $created_at,
 			'updated_at'    => $updated_at,
 		);
-		$format = array('%d', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s');
+		$format = array('%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s');
 
 		if ($size !== null) {
 			$insert_data['size'] = $size;
@@ -736,12 +740,17 @@ class FileChi_DB {
 	}
 
 	/**
-	 * Retrieves transfer log rows for an attachment and provider indexed by relative file path.
+	 * Checks whether the initial migration from filechi_logs to filechi_files is completed.
 	 *
-	 * @param int $attachment_id
-	 * @param int $provider_id
-	 * @return array<string, array> Keyed by file_path.
+	 * Until migration is completed, readers fall back to filechi_logs for any missing data.
+	 *
+	 * @return bool True if completed, false if still in progress or pending.
 	 */
+	public static function is_files_migration_completed() {
+		$progress = get_option('filechi_files_migration_progress', array());
+		return !empty($progress['completed']);
+	}
+
 	/**
 	 * Retrieves file index rows for an attachment and provider indexed by local path.
 	 *
@@ -756,17 +765,39 @@ class FileChi_DB {
 		$provider_id   = absint($provider_id);
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$rows = $wpdb->get_results($wpdb->prepare("SELECT id, attachment_id, provider_id, role, local_path, remote_key, size, etag, status, last_error, failures, updated_at FROM {$table} WHERE attachment_id = %d AND provider_id = %d", $attachment_id, $provider_id), ARRAY_A);
-
-		if (!is_array($rows)) {
-			return array();
-		}
+		$rows = $wpdb->get_results($wpdb->prepare("SELECT id, attachment_id, provider_id, role, local_path, remote_key, path_hash, size, etag, status, last_error, failures, updated_at FROM {$table} WHERE attachment_id = %d AND provider_id = %d", $attachment_id, $provider_id), ARRAY_A);
 
 		$by_file = array();
-		foreach ($rows as $row) {
-			$path = isset($row['local_path']) ? $row['local_path'] : ($row['file_path'] ?? '');
-			if ($path !== '') {
-				$by_file[$path] = $row;
+		if (is_array($rows)) {
+			foreach ($rows as $row) {
+				$path = isset($row['local_path']) ? $row['local_path'] : '';
+				if ($path !== '') {
+					$by_file[$path] = $row;
+				}
+			}
+		}
+
+		// Fall back to filechi_logs during partial migration for anything missing
+		if (!self::is_files_migration_completed()) {
+			$logs = self::get_attachment_logs_by_file($attachment_id, $provider_id);
+			foreach ($logs as $log_path => $log) {
+				if (!isset($by_file[$log_path])) {
+					$by_file[$log_path] = array(
+						'id'            => 0,
+						'attachment_id' => $attachment_id,
+						'provider_id'   => $provider_id,
+						'role'          => 'primary',
+						'local_path'    => $log_path,
+						'remote_key'    => $log_path,
+						'path_hash'     => sha1($log_path),
+						'size'          => isset($log['file_size']) ? (int) $log['file_size'] : null,
+						'etag'          => null,
+						'status'        => ($log['status'] === 'failed') ? 'failed' : 'transferred',
+						'last_error'    => $log['error_message'] ?? null,
+						'failures'      => isset($log['attempts']) ? (int) $log['attempts'] : 0,
+						'updated_at'    => $log['updated_at'] ?? current_time('mysql'),
+					);
+				}
 			}
 		}
 
@@ -803,7 +834,7 @@ class FileChi_DB {
 
 	/**
 	 * Checks whether a given relative storage key has been transferred to a provider.
-	 * Reads authoritatively from filechi_files index table.
+	 * Reads authoritatively from filechi_files index table with dual-read fallback to logs.
 	 *
 	 * @param int    $provider_id Provider ID.
 	 * @param string $file_path   Relative storage key.
@@ -814,12 +845,25 @@ class FileChi_DB {
 		$table       = self::get_files_table();
 		$provider_id = absint($provider_id);
 		$file_path   = sanitize_text_field($file_path);
+		$path_hash   = sha1($file_path);
 
-		// Check against remote_key and local_path with status = 'transferred'
+		// Check against path_hash, remote_key and local_path with status = 'transferred'
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$status = $wpdb->get_var($wpdb->prepare("SELECT status FROM {$table} WHERE provider_id = %d AND (remote_key = %s OR local_path = %s) AND status = 'transferred' LIMIT 1", $provider_id, $file_path, $file_path));
+		$status = $wpdb->get_var($wpdb->prepare("SELECT status FROM {$table} WHERE provider_id = %d AND (path_hash = %s OR remote_key = %s OR local_path = %s) AND status = 'transferred' LIMIT 1", $provider_id, $path_hash, $file_path, $file_path));
 
-		return !empty($status);
+		if (!empty($status)) {
+			return true;
+		}
+
+		// Fall back to filechi_logs during partial migration
+		if (!self::is_files_migration_completed()) {
+			$logs_table = self::get_logs_table();
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+			$log_status = $wpdb->get_var($wpdb->prepare("SELECT status FROM {$logs_table} WHERE provider_id = %d AND file_path = %s AND status = 'transferred' LIMIT 1", $provider_id, $file_path));
+			return !empty($log_status);
+		}
+
+		return false;
 	}
 
 	/**
@@ -938,13 +982,22 @@ class FileChi_DB {
 			"SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE meta_key = '_filechi_offloaded' AND meta_value = '1'"
 		);
 
-		// Total bytes transferred on remote storage (from filechi_files)
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$total_bytes = (double) $wpdb->get_var("SELECT SUM(size) FROM {$files_table} WHERE status = 'transferred'");
+		// Total bytes transferred and failed count (dual-read during migration)
+		if (self::is_files_migration_completed()) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+			$total_bytes = (double) $wpdb->get_var("SELECT SUM(size) FROM {$files_table} WHERE status = 'transferred'");
 
-		// Failed count (from filechi_files)
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
-		$failed_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$files_table} WHERE status = 'failed'");
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+			$failed_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$files_table} WHERE status = 'failed'");
+		} else {
+			// During migration window, read authoritative logs table for stats so incomplete table does not report partial stats
+			$logs_table = self::get_logs_table();
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+			$total_bytes = (double) $wpdb->get_var("SELECT SUM(file_size) FROM {$logs_table} WHERE status IN ('transferred', 'reconciled')");
+
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+			$failed_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$logs_table} WHERE status = 'failed'");
+		}
 
 		// Given-up attachments count
 		$given_up_count = self::get_given_up_attachment_count();

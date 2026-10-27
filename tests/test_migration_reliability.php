@@ -428,11 +428,14 @@ $mock_driver->remote_files[$rel_f1] = array(
 	'content' => file_get_contents($temp_dir . '/' . $rel_f1),
 );
 
-// Mock DB log row for File 1 as already 'transferred'
+// Mock DB file row for File 1 as already 'transferred'
 $original_log_f1 = array(
 	'id'            => 99,
+	'local_path'    => $rel_f1,
+	'remote_key'    => $rel_f1,
 	'file_path'     => $rel_f1,
 	'file_size'     => filesize($temp_dir . '/' . $rel_f1),
+	'size'          => filesize($temp_dir . '/' . $rel_f1),
 	'status'        => 'transferred',
 	'error_message' => null,
 	'attempts'      => 1,

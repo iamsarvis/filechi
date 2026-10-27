@@ -106,12 +106,18 @@ $wpdb->get_row_override = null;
 // Custom get_row to query existing file row in $mock_files_rows
 $orig_get_row = function($query) use (&$mock_files_rows) {
 	if (strpos($query, 'FROM wp_filechi_files') !== false) {
-		if (preg_match('/attachment_id = (\d+) AND provider_id = (\d+) AND local_path = \'([^\']+)\'/', $query, $m)) {
-			$aid  = (int) $m[1];
-			$pid  = (int) $m[2];
-			$path = $m[3];
-			$key  = "{$aid}_{$pid}_{$path}";
-			return $mock_files_rows[$key] ?? null;
+		if (preg_match('/attachment_id = (\d+) AND provider_id = (\d+) AND (?:path_hash|local_path) = \'([^\']+)\'/', $query, $m)) {
+			$aid    = (int) $m[1];
+			$pid    = (int) $m[2];
+			$target = $m[3];
+			foreach ($mock_files_rows as $row) {
+				if ((int)$row['attachment_id'] === $aid && (int)$row['provider_id'] === $pid) {
+					if (($row['path_hash'] ?? '') === $target || ($row['local_path'] ?? '') === $target) {
+						return $row;
+					}
+				}
+			}
+			return null;
 		}
 	}
 	return null;
@@ -119,14 +125,18 @@ $orig_get_row = function($query) use (&$mock_files_rows) {
 
 // Hook insert and update on Mock_WPDB
 $next_file_id = 1;
-$wpdb->on_insert = function($table, $data) use (&$mock_files_rows, &$next_file_id) {
+$wpdb->on_insert = function($table, $data) use (&$mock_files_rows, &$next_file_id, $wpdb) {
 	if (strpos($table, 'filechi_files') !== false) {
 		$aid  = (int) $data['attachment_id'];
 		$pid  = (int) $data['provider_id'];
 		$path = $data['local_path'];
 		$key  = "{$aid}_{$pid}_{$path}";
 		$data['id'] = $next_file_id++;
+		if (empty($data['path_hash'])) {
+			$data['path_hash'] = sha1($path);
+		}
 		$mock_files_rows[$key] = $data;
+		$wpdb->insert_id = $data['id'];
 	}
 };
 

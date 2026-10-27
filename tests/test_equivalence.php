@@ -147,9 +147,18 @@ $mock_proxy = new class($wpdb, $fixture_logs, $fixture_files, $next_files_id) {
 
 	public function get_row($query, $output = 'ARRAY_A') {
 		if (strpos($query, 'FROM wp_filechi_files') !== false) {
-			if (preg_match("/attachment_id = (\d+) AND provider_id = (\d+) AND local_path = '([^']+)'/", $query, $m)) {
-				$key = "{$m[1]}_{$m[2]}_{$m[3]}";
-				return $this->files_ref[$key] ?? null;
+			if (preg_match("/attachment_id = (\d+) AND provider_id = (\d+) AND (?:path_hash|local_path) = '([^']+)'/", $query, $m)) {
+				$aid    = (int) $m[1];
+				$pid    = (int) $m[2];
+				$target = $m[3];
+				foreach ($this->files_ref as $row) {
+					if ((int)$row['attachment_id'] === $aid && (int)$row['provider_id'] === $pid) {
+						if (($row['path_hash'] ?? '') === $target || ($row['local_path'] ?? '') === $target) {
+							return $row;
+						}
+					}
+				}
+				return null;
 			}
 		}
 		return $this->wpdb->get_row($query, $output);
@@ -158,12 +167,18 @@ $mock_proxy = new class($wpdb, $fixture_logs, $fixture_files, $next_files_id) {
 	public function get_var($query) {
 		// is_file_transferred query on wp_filechi_files
 		if (strpos($query, 'FROM wp_filechi_files') !== false && strpos($query, "status = 'transferred'") !== false) {
-			if (preg_match("/provider_id = (\d+) AND \(remote_key = '([^']+)' OR local_path = '([^']+)'\)/", $query, $m)) {
+			if (preg_match("/provider_id = (\d+)/", $query, $m)) {
 				$pid = (int) $m[1];
-				$key = stripslashes($m[2]);
 				foreach ($this->files_ref as $row) {
-					if ((int)$row['provider_id'] === $pid && ($row['remote_key'] === $key || $row['local_path'] === $key) && $row['status'] === 'transferred') {
-						return 'transferred';
+					if ((int)$row['provider_id'] === $pid && $row['status'] === 'transferred') {
+						$p_hash = $row['path_hash'] ?? sha1($row['local_path'] ?? '');
+						$r_key  = $row['remote_key'] ?? '';
+						$l_path = $row['local_path'] ?? '';
+						if (($p_hash !== '' && strpos($query, "'" . addslashes($p_hash) . "'") !== false) ||
+						    ($r_key !== '' && strpos($query, "'" . addslashes($r_key) . "'") !== false) ||
+						    ($l_path !== '' && strpos($query, "'" . addslashes($l_path) . "'") !== false)) {
+							return 'transferred';
+						}
 					}
 				}
 				return null;
@@ -217,7 +232,11 @@ $mock_proxy = new class($wpdb, $fixture_logs, $fixture_files, $next_files_id) {
 			$path = $data['local_path'];
 			$key  = "{$aid}_{$pid}_{$path}";
 			$data['id'] = $this->next_id_ref++;
+			if (empty($data['path_hash'])) {
+				$data['path_hash'] = sha1($path);
+			}
 			$this->files_ref[$key] = $data;
+			$this->wpdb->insert_id = $data['id'];
 			return 1;
 		}
 		return $this->wpdb->insert($table, $data, $format);

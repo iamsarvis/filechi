@@ -504,6 +504,12 @@ if (!class_exists('Mock_WPDB')) {
 
 		public function get_var($query) {
 			$this->queries[] = $query;
+			if ($this->get_var_override !== null) {
+				if (is_callable($this->get_var_override)) {
+					return call_user_func($this->get_var_override, $query);
+				}
+				return $this->get_var_override;
+			}
 			if (strpos($query, 'COUNT(*)') !== false) {
 				if (preg_match("/meta_value = '?(\d+)'?/", $query, $m)) {
 					$pid = (int) $m[1];
@@ -557,6 +563,7 @@ if (!class_exists('Mock_WPDB')) {
 
 		public $get_row_override     = null;
 		public $get_results_override = null;
+		public $get_var_override     = null;
 		public $on_insert            = null;
 		public $on_update            = null;
 		public $insert_id            = 1;
@@ -564,6 +571,9 @@ if (!class_exists('Mock_WPDB')) {
 		public function get_row($query, $output = 'ARRAY_A') {
 			$this->queries[] = $query;
 			if ($this->get_row_override !== null) {
+				if (is_callable($this->get_row_override)) {
+					return call_user_func($this->get_row_override, $query, $output);
+				}
 				return $this->get_row_override;
 			}
 			return null;

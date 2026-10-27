@@ -14,7 +14,7 @@ class FileChi_Activator {
 	/**
 	 * Database schema version.
 	 */
-	const DB_VERSION = '1.1.0';
+	const DB_VERSION = '1.1.1';
 
 	/**
 	 * Creates or upgrades custom database tables on activation.
@@ -72,6 +72,16 @@ class FileChi_Activator {
 			}
 			FileChi_DB::run_files_migration();
 			do_action('filechi_db_upgrade_1_1_0');
+		}
+
+		if (version_compare($installed, '1.1.1', '<')) {
+			global $wpdb;
+			$files_table = $wpdb->prefix . 'filechi_files';
+			// Populate path_hash = SHA1(local_path) for any existing rows that have empty path_hash
+			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+			$wpdb->query("UPDATE {$files_table} SET path_hash = SHA1(local_path) WHERE path_hash = '' OR path_hash IS NULL");
+			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			do_action('filechi_db_upgrade_1_1_1');
 		}
 	}
 
@@ -153,6 +163,7 @@ class FileChi_Activator {
   role varchar(10) NOT NULL DEFAULT 'primary',
   local_path varchar(500) NOT NULL,
   remote_key varchar(500) NOT NULL,
+  path_hash char(40) NOT NULL DEFAULT '',
   size bigint(20) unsigned DEFAULT NULL,
   etag varchar(64) DEFAULT NULL,
   status varchar(20) NOT NULL,
@@ -161,7 +172,8 @@ class FileChi_Activator {
   created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   updated_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   PRIMARY KEY  (id),
-  UNIQUE KEY attachment_provider_local (attachment_id, provider_id, local_path(191)),
+  UNIQUE KEY attachment_provider_hash (attachment_id, provider_id, path_hash),
+  KEY local_path (local_path(191)),
   KEY provider_remote_status (provider_id, remote_key(191), status),
   KEY attachment_id (attachment_id),
   KEY status (status)
