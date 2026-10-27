@@ -429,6 +429,53 @@ class FileChi_Storage_SFTP implements FileChi_Storage_Interface {
 	/**
 	 * {@inheritdoc}
 	 */
+	public function download($remote_path, $local_file, $filesize = 0) {
+		$this->last_error = '';
+
+		try {
+			$sftp             = $this->get_client();
+			$full_remote_path = $this->resolve_path($remote_path);
+
+			if (!$sftp->file_exists($full_remote_path)) {
+				$this->last_error = "File not found on remote SFTP: {$remote_path}";
+				return 'file_not_found';
+			}
+
+			$base_timeout = max(30, absint($this->settings['timeout'] ?? 30));
+			if ($filesize <= 0) {
+				$remote_size = $sftp->filesize($full_remote_path);
+				$filesize    = ($remote_size !== false && $remote_size > 0) ? (int) $remote_size : 0;
+			}
+			$timeout = ($filesize > 0) ? max($base_timeout, (int) ceil($filesize / 50000) + 30) : $base_timeout;
+			$sftp->setTimeout($timeout);
+
+			$dest_dir = dirname($local_file);
+			if (!is_dir($dest_dir) && function_exists('wp_mkdir_p')) {
+				wp_mkdir_p($dest_dir);
+			}
+
+			$result = $sftp->get($full_remote_path, $local_file);
+			if ($result === false) {
+				if (file_exists($local_file)) {
+					@unlink($local_file);
+				}
+				$this->last_error = "SFTP get failed for {$remote_path}";
+				return 'download_failed';
+			}
+
+			return true;
+		} catch (\Exception $e) {
+			if (file_exists($local_file)) {
+				@unlink($local_file);
+			}
+			$this->last_error = 'SFTP download error: ' . $e->getMessage();
+			return 'download_failed';
+		}
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
 	public function get_last_error() {
 		return $this->last_error;
 	}

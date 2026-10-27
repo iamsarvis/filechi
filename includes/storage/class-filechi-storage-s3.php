@@ -143,6 +143,20 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 	}
 
 	/**
+	 * Resolves object key with configured prefix/root path.
+	 *
+	 * Alias for resolve_key to maintain consistent method naming across storage drivers.
+	 *
+	 * @param string $remote_path Relative remote path/key.
+	 * @param bool   $is_probe Whether this is a probe key.
+	 * @return string
+	 * @throws FileChi_Path_Exception When path fails validation.
+	 */
+	public function resolve_path($remote_path = '', $is_probe = false) {
+		return $this->resolve_key($remote_path, $is_probe);
+	}
+
+	/**
 	 * Builds URI and Host based on path-style or virtual-hosted addressing.
 	 *
 	 * @param string $key Object key.
@@ -702,6 +716,135 @@ class FileChi_Storage_S3 implements FileChi_Storage_Interface {
 		}
 
 		return false;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
+	public function download($remote_path, $local_file, $filesize = 0) {
+		$this->last_error = '';
+
+		try {
+			$clean_key = $this->resolve_path($remote_path);
+		} catch (\Exception $e) {
+			$this->last_error = $e->getMessage();
+			return 'invalid_path';
+		}
+
+		$dest_dir = dirname($local_file);
+		if (!is_dir($dest_dir) && function_exists('wp_mkdir_p')) {
+			wp_mkdir_p($dest_dir);
+		}
+
+		$base_timeout = max(30, absint($this->settings['timeout'] ?? 30));
+		if ($filesize <= 0) {
+			$remote_size = $this->get_size($remote_path);
+			$filesize    = $remote_size > 0 ? $remote_size : 0;
+		}
+		$timeout = ($filesize > 0) ? max($base_timeout, (int) ceil($filesize / 50000) + 30) : $base_timeout;
+
+		$target   = $this->build_request_target($clean_key);
+		$url      = $target['url'];
+		$host     = $target['host'];
+		$uri_path = $target['uri_path'];
+
+		$timestamp  = time();
+		$amz_date   = gmdate('Ymd\THis\Z', $timestamp);
+		$date_stamp = gmdate('Ymd', $timestamp);
+
+		$access_key = trim((string) ($this->settings['access_key'] ?? ''));
+		$secret_key = trim((string) ($this->settings['secret_key'] ?? ''));
+		$region     = trim((string) ($this->settings['region'] ?? '')) ?: 'us-east-1';
+
+		$payload_hash = hash('sha256', '');
+
+		$headers = array(
+			'host'                 => $host,
+			'x-amz-date'           => $amz_date,
+			'x-amz-content-sha256' => $payload_hash,
+		);
+
+		ksort($headers);
+		$canonical_headers  = '';
+		$signed_headers_arr = array();
+		foreach ($headers as $h_name => $h_val) {
+			$canonical_headers   .= $h_name . ':' . $h_val . "\n";
+			$signed_headers_arr[] = $h_name;
+		}
+		$signed_headers = implode(';', $signed_headers_arr);
+
+		$canonical_uri = $this->encode_uri_path($uri_path);
+
+		$canonical_request = implode("\n", array(
+			'GET',
+			$canonical_uri,
+			'',
+			$canonical_headers,
+			$signed_headers,
+			$payload_hash,
+		));
+
+		$credential_scope = "{$date_stamp}/{$region}/s3/aws4_request";
+		$string_to_sign   = implode("\n", array(
+			'AWS4-HMAC-SHA256',
+			$amz_date,
+			$credential_scope,
+			hash('sha256', $canonical_request),
+		));
+
+		$signing_key = $this->get_signature_key($date_stamp, $region, $secret_key);
+		$signature   = hash_hmac('sha256', $string_to_sign, $signing_key);
+
+		$authorization = "AWS4-HMAC-SHA256 Credential={$access_key}/{$credential_scope}, SignedHeaders={$signed_headers}, Signature={$signature}";
+
+		$request_headers = array_merge(
+			$headers,
+			array(
+				'Authorization' => $authorization,
+			)
+		);
+
+		$args = array(
+			'method'    => 'GET',
+			'headers'   => $request_headers,
+			'stream'    => true,
+			'filename'  => $local_file,
+			'timeout'   => $timeout,
+			'sslverify' => true,
+		);
+
+		$response = wp_remote_request($url, $args);
+
+		if (is_wp_error($response)) {
+			if (file_exists($local_file)) {
+				@unlink($local_file);
+			}
+			$this->last_error = $response->get_error_message();
+			$err_code         = (string) $response->get_error_code();
+			if (strpos($err_code, 'timeout') !== false || strpos(strtolower($this->last_error), 'timed out') !== false) {
+				return 'timeout';
+			}
+			return 'connection_failed';
+		}
+
+		$code = (int) wp_remote_retrieve_response_code($response);
+		if ($code < 200 || $code >= 300) {
+			if (file_exists($local_file)) {
+				@unlink($local_file);
+			}
+			if ($code === 404) {
+				$this->last_error = "File not found on remote S3: {$remote_path}";
+				return 'file_not_found';
+			}
+			if ($code === 403) {
+				$this->last_error = "Access denied on remote S3: {$remote_path}";
+				return 'access_denied';
+			}
+			$this->last_error = "S3 download returned HTTP {$code} for {$remote_path}";
+			return 'download_failed';
+		}
+
+		return true;
 	}
 
 	/**
