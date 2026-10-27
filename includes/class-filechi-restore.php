@@ -755,7 +755,17 @@ class FileChi_Restore {
 				$r_key = $f['remote_key'];
 				try {
 					$clean_r_key = FileChi_Path::validate($r_key);
-					$driver->delete($clean_r_key);
+					$del_ok      = $driver->delete($clean_r_key);
+					if (!$del_ok) {
+						FileChi_DB::log_transfer(
+							$attachment_id,
+							$provider_id,
+							$clean_r_key,
+							0,
+							'failed',
+							sprintf(__('Remote file deletion failed after restore for %s: %s', 'filechi'), $clean_r_key, $driver->get_last_error())
+						);
+					}
 				} catch (\Exception $e) {
 					// A failed remote delete never undoes the restore
 					FileChi_DB::log_transfer(
