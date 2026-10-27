@@ -104,6 +104,7 @@ function filechi_init() {
 	require_once FILECHI_DIR . 'includes/class-filechi-media.php';
 	require_once FILECHI_DIR . 'includes/class-filechi-woocommerce.php';
 	require_once FILECHI_DIR . 'includes/class-filechi-migration.php';
+	require_once FILECHI_DIR . 'includes/class-filechi-restore.php';
 
 	// Load textdomain for i18n
 	load_plugin_textdomain('filechi', false, dirname(plugin_basename(FILECHI_FILE)) . '/languages');
@@ -116,6 +117,7 @@ function filechi_init() {
 	new FileChi_Media();
 	new FileChi_WooCommerce();
 	new FileChi_Migration();
+	new FileChi_Restore();
 
 	// Register REST API routes
 	add_action('rest_api_init', function () {

@@ -124,7 +124,7 @@ class Mock_Streaming_Storage_Driver implements FileChi_Storage_Interface {
 		return true;
 	}
 
-	public function download($remote_path, $local_file) {
+	public function download($remote_path, $local_file, $filesize = 0) {
 		if (isset($this->remote_files[$remote_path])) {
 			$content = is_callable($this->remote_files[$remote_path]['stream_content'])
 				? 'mock_content'

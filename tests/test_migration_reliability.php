@@ -115,7 +115,7 @@ class Reliability_Mock_Driver implements FileChi_Storage_Interface {
 		return true;
 	}
 
-	public function download($remote_path, $local_file) {
+	public function download($remote_path, $local_file, $filesize = 0) {
 		if (isset($this->remote_files[$remote_path])) {
 			file_put_contents($local_file, $this->remote_files[$remote_path]['content'] ?? '');
 			return true;

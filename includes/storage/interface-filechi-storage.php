@@ -87,9 +87,10 @@ interface FileChi_Storage_Interface {
 	 *
 	 * @param string $remote_path Relative remote path/key.
 	 * @param string $local_file Absolute path to local file.
+	 * @param int    $filesize Optional known file size to scale transfer timeout.
 	 * @return true|string True on success, or string reason code on failure.
 	 */
-	public function download($remote_path, $local_file);
+	public function download($remote_path, $local_file, $filesize = 0);
 
 	/**
 	 *
