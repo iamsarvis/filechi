@@ -194,6 +194,7 @@ class FileChi_Activator {
 	 */
 	public static function default_settings() {
 		return array(
+			'offload_enabled'          => 1, // Default: offloading enabled
 			'keep_local_files'         => 1, // Default: keep local file copies (safe default)
 			'keep_remote_on_delete'    => 0, // Default: delete remote copy when attachment is deleted
 			'remote_path_format'       => 'basedir', // 'basedir' (standard wp-content/uploads layout)
