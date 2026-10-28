@@ -790,5 +790,26 @@ if (!function_exists('wp_check_filetype')) {
 	}
 }
 
+if (!function_exists('size_format')) {
+	function size_format($bytes, $decimals = 0) {
+		$quant = array(
+			'TB' => 1099511627776,
+			'GB' => 1073741824,
+			'MB' => 1048576,
+			'KB' => 1024,
+			'B'  => 1,
+		);
+		if (0 === (int) $bytes) {
+			return '0 B';
+		}
+		foreach ($quant as $unit => $mag) {
+			if ((double) $bytes >= $mag) {
+				return number_format($bytes / $mag, $decimals) . ' ' . $unit;
+			}
+		}
+		return '0 B';
+	}
+}
+
 require_once FILECHI_DIR . 'includes/class-filechi-activator.php';
 require_once FILECHI_DIR . 'includes/class-filechi-path.php';

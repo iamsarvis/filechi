@@ -14,6 +14,7 @@
  * 8. Offload paused when offload_enabled = 0 or restore is running for provider
  * 9. Path traversal (.. or path outside uploads) rejected cleanly
  * 10. S3 and SFTP download driver mock verification (ETag validation, stream handling)
+ * 11. Action Scheduler group 'filechi' verification on start/pause/resume
  */
 
 require_once __DIR__ . '/bootstrap.php';
@@ -539,6 +540,35 @@ $sftp_driver = new FileChi_Storage_SFTP($sftp_provider);
 assert(method_exists($sftp_driver, 'download'), 'SFTP driver must implement download()');
 echo "[+] Test 10 PASSED: S3 and SFTP drivers verified.\n";
 
+echo "\n--- Test 11: Action Scheduler group 'filechi' verification ---\n";
+$GLOBALS['mock_scheduled_actions'] = array();
+$GLOBALS['mock_unscheduled_actions'] = array();
+
+// Start restore
+$start_res = FileChi_Restore::start_restore(1, false);
+assert($start_res['status'] === 'running');
+$last_sched = end($GLOBALS['mock_scheduled_actions']);
+assert($last_sched['hook'] === 'filechi_restore_batch', 'Must schedule filechi_restore_batch');
+assert($last_sched['group'] === 'filechi', 'filechi_restore_batch must have group filechi');
+
+// Pause restore
+$pause_res = FileChi_Restore::pause_restore();
+assert($pause_res['status'] === 'paused');
+$last_unsched = end($GLOBALS['mock_unscheduled_actions']);
+assert($last_unsched['hook'] === 'filechi_restore_batch', 'Must unschedule filechi_restore_batch');
+assert($last_unsched['group'] === 'filechi', 'unschedule must have group filechi');
+
+// Resume restore
+$resume_res = FileChi_Restore::resume_restore();
+assert($resume_res['status'] === 'running');
+$last_sched_res = end($GLOBALS['mock_scheduled_actions']);
+assert($last_sched_res['hook'] === 'filechi_restore_batch');
+assert($last_sched_res['group'] === 'filechi');
+
+// Clean up option
+delete_option(FileChi_Restore::OPTION_STATE);
+echo "[+] Test 11 PASSED: Action Scheduler group 'filechi' verified.\n";
+
 // Cleanup test upload directory
 $cleanup_files = function($dir) use (&$cleanup_files) {
 	if (!is_dir($dir)) {
@@ -560,4 +590,4 @@ $cleanup_files = function($dir) use (&$cleanup_files) {
 };
 $cleanup_files($temp_dir);
 
-echo "\nALL 10 RESTORE ENGINE UNIT TESTS PASSED!\n";
+echo "\nALL 11 RESTORE ENGINE UNIT TESTS PASSED!\n";

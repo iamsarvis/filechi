@@ -116,7 +116,7 @@ class FileChi_Restore {
 		update_option(self::OPTION_STATE, $state, false);
 
 		if (function_exists('as_schedule_single_action')) {
-			as_schedule_single_action(time() + 1, self::ACTION_HOOK);
+			as_schedule_single_action(time() + 1, self::ACTION_HOOK, array(), 'filechi');
 		}
 
 		return $state;
@@ -137,7 +137,7 @@ class FileChi_Restore {
 		update_option(self::OPTION_STATE, $state, false);
 
 		if (function_exists('as_unschedule_all_actions')) {
-			as_unschedule_all_actions(self::ACTION_HOOK);
+			as_unschedule_all_actions(self::ACTION_HOOK, array(), 'filechi');
 		}
 
 		return self::get_status();
@@ -167,8 +167,8 @@ class FileChi_Restore {
 		update_option(self::OPTION_STATE, $state, false);
 
 		if (function_exists('as_schedule_single_action')) {
-			if (!function_exists('as_has_scheduled_action') || !as_has_scheduled_action(self::ACTION_HOOK)) {
-				as_schedule_single_action(time() + 1, self::ACTION_HOOK);
+			if (!function_exists('as_has_scheduled_action') || !as_has_scheduled_action(self::ACTION_HOOK, array(), 'filechi')) {
+				as_schedule_single_action(time() + 1, self::ACTION_HOOK, array(), 'filechi');
 			}
 		}
 
@@ -206,8 +206,8 @@ class FileChi_Restore {
 		update_option(self::OPTION_STATE, $state, false);
 
 		if (function_exists('as_schedule_single_action')) {
-			if (!function_exists('as_has_scheduled_action') || !as_has_scheduled_action(self::ACTION_HOOK)) {
-				as_schedule_single_action(time() + 1, self::ACTION_HOOK);
+			if (!function_exists('as_has_scheduled_action') || !as_has_scheduled_action(self::ACTION_HOOK, array(), 'filechi')) {
+				as_schedule_single_action(time() + 1, self::ACTION_HOOK, array(), 'filechi');
 			}
 		}
 
@@ -247,7 +247,11 @@ class FileChi_Restore {
 
 		$free_space_formatted = 'unknown';
 		if ($free_space !== null) {
-			$free_space_formatted = size_format((int) $free_space, 2);
+			if (function_exists('size_format')) {
+				$free_space_formatted = size_format((int) $free_space, 2);
+			} else {
+				$free_space_formatted = number_format($free_space / 1048576, 2) . ' MB';
+			}
 		}
 
 		if (empty($state) || !is_array($state)) {
@@ -355,7 +359,7 @@ class FileChi_Restore {
 		$remaining_ids = FileChi_DB::get_unrestored_attachment_ids($provider_id, 1, false);
 		if (!empty($remaining_ids)) {
 			if (function_exists('as_schedule_single_action')) {
-				as_schedule_single_action(time() + 10, self::ACTION_HOOK);
+				as_schedule_single_action(time() + 10, self::ACTION_HOOK, array(), 'filechi');
 			}
 		} else {
 			$all_remaining = FileChi_DB::get_unrestored_attachment_ids($provider_id, 1, true);

@@ -38,8 +38,8 @@ class FileChi_Migration {
 	public static function start_migration() {
 		update_option('filechi_migration_status', 'running');
 
-		if (!as_has_scheduled_action(self::ACTION_HOOK)) {
-			as_schedule_single_action(time() + 1, self::ACTION_HOOK);
+		if (!function_exists('as_has_scheduled_action') || !as_has_scheduled_action(self::ACTION_HOOK, array(), 'filechi')) {
+			as_schedule_single_action(time() + 1, self::ACTION_HOOK, array(), 'filechi');
 		}
 		return true;
 	}
@@ -49,7 +49,9 @@ class FileChi_Migration {
 	 */
 	public static function pause_migration() {
 		update_option('filechi_migration_status', 'paused');
-		as_unschedule_all_actions(self::ACTION_HOOK);
+		if (function_exists('as_unschedule_all_actions')) {
+			as_unschedule_all_actions(self::ACTION_HOOK, array(), 'filechi');
+		}
 	}
 
 	/**
@@ -119,7 +121,9 @@ class FileChi_Migration {
 		// Schedule next batch with at least 10 s delay via Action Scheduler if still running
 		$remaining = FileChi_DB::get_unmigrated_attachment_ids(1);
 		if (!empty($remaining)) {
-			as_schedule_single_action(time() + 10, self::ACTION_HOOK);
+			if (function_exists('as_schedule_single_action')) {
+				as_schedule_single_action(time() + 10, self::ACTION_HOOK, array(), 'filechi');
+			}
 		} else {
 			$given_up = FileChi_DB::get_given_up_attachment_count();
 			if ($given_up > 0) {
