@@ -225,11 +225,15 @@ class FileChi_Activator {
 			as_unschedule_all_actions('filechi_process_migration_batch', array(), 'filechi');
 			as_unschedule_all_actions('filechi_retry_attachment_offload', array(), 'filechi');
 			as_unschedule_all_actions('filechi_migrate_files_batch', array(), 'filechi');
+			as_unschedule_all_actions('filechi_restore_batch', array(), 'filechi');
+			as_unschedule_all_actions('filechi_retry_restore_attachment', array(), 'filechi');
 		}
 
 		// Clear any scheduled WP-Cron events
 		wp_clear_scheduled_hook('filechi_process_migration_batch');
 		wp_clear_scheduled_hook('filechi_retry_attachment_offload');
 		wp_clear_scheduled_hook('filechi_migrate_files_batch');
+		wp_clear_scheduled_hook('filechi_restore_batch');
+		wp_clear_scheduled_hook('filechi_retry_restore_attachment');
 	}
 }

@@ -191,9 +191,10 @@ FileChi stores all persistent data using WordPress core conventions with explici
 - `{$wpdb->prefix}filechi_logs`: Stores transfer/migration attempt rows and error reasons.
 
 ### 5.2 WordPress Options
-- `filechi_settings`: Core configuration array (keep local, path format, batch size, etc.).
+- `filechi_settings`: Core configuration array (`offload_enabled` toggle [default 1], keep local, path format, batch size, etc.).
 - `filechi_db_version`: Installed schema version.
 - `filechi_migration_status`: Current state of migration (`running`, `paused`, `completed`, `given_up`, `stopped`).
+- `filechi_restore_state`: Current restore process state array (`provider_id`, `status`, `counts`, `bytes`, `delete_remote`, `started_at`, `completed_at`). Preserved on safe uninstall, removed on opt-in uninstall.
 - `filechi_protected_path_missing_notice`: Warning notice data when SFTP/FTPS protected path is unconfigured.
 - `filechi_files_migration_progress`: Progress tracker for one-time batched migration from `filechi_logs` to `filechi_files`.
 - `filechi_db_upgrade_error`: Error message recorded when an automated schema upgrade fails.
@@ -203,19 +204,25 @@ FileChi stores all persistent data using WordPress core conventions with explici
 - `filechi_db_upgrading`: Concurrency lock transient (stored as `_transient_filechi_db_upgrading`, 300s TTL) preventing parallel database migrations.
 
 ### 5.4 Attachment Post Meta (`wp_postmeta`)
-- `_filechi_offloaded`: Flag (`1`) indicating all files belonging to the attachment are satisfied on remote storage.
-- `_filechi_provider_id`: ID of the remote provider where files were transferred.
+- `_filechi_offloaded`: Flag (`1`) indicating all files belonging to the attachment are satisfied on remote storage. Removed upon successful restore.
+- `_filechi_provider_id`: ID of the remote provider where files were transferred. Removed upon successful restore.
 - `_filechi_retry_scheduled`: Flag (`1`) indicating an Action Scheduler retry job is pending.
 - `_filechi_failure_count`: Integer counter tracking consecutive transfer failures for exponential backoff.
 - `_filechi_given_up`: Flag (`1`) indicating max retry limit (5) has been reached or file is unretryable.
 - `_filechi_last_error`: String recording the most recent specific failure reason.
 - `_filechi_unretryable`: Flag (`1`) set when file is missing both locally and remotely.
+- `_filechi_restore_failure_count`: Integer counter tracking consecutive restore failures for backoff.
+- `_filechi_restore_given_up`: Flag (`1`) indicating restore gave up on this attachment after 5 failures.
+- `_filechi_restore_last_error`: String recording the most recent restore failure reason.
+- `_filechi_restore_retry_scheduled`: Flag (`1`) indicating an Action Scheduler restore retry job is pending.
 
 ### 5.5 Action Scheduler Scheduled Hooks
 - `filechi_process_migration_batch`: Group `filechi`.
 - `filechi_retry_attachment_offload`: Group `filechi`.
 - `filechi_migrate_files_batch`: Group `filechi`.
+- `filechi_restore_batch`: Group `filechi`.
+- `filechi_retry_restore_attachment`: Group `filechi`.
 
 ### 5.6 Uninstall Policy
-- **Default (`delete_data_on_uninstall = 0`):** Safe uninstall. Cancels all pending Action Scheduler hooks, clears all `filechi_lock_*` transients. Preserves tables, options, and postmeta. Remote storage files are never touched.
-- **Opt-in (`delete_data_on_uninstall = 1`):** Complete cleanup. Drops custom tables, deletes all `filechi_%` options, drops all `_transient_filechi_%` transients, and removes all `_filechi_%` postmeta keys. Remote storage files are never touched.
+- **Default (`delete_data_on_uninstall = 0`):** Safe uninstall. Cancels all pending Action Scheduler hooks (migration and restore), clears all `filechi_lock_*` transients. Preserves tables, options, and postmeta. Remote storage files are never touched.
+- **Opt-in (`delete_data_on_uninstall = 1`):** Complete cleanup. Drops custom tables, deletes all `filechi_%` options (including `filechi_restore_state`), drops all `_transient_filechi_%` transients, and removes all `_filechi_%` postmeta keys. Remote storage files are never touched.

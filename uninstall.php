@@ -25,10 +25,14 @@ function filechi_uninstall_site() {
 		as_unschedule_all_actions( 'filechi_process_migration_batch', array(), 'filechi' );
 		as_unschedule_all_actions( 'filechi_retry_attachment_offload', array(), 'filechi' );
 		as_unschedule_all_actions( 'filechi_migrate_files_batch', array(), 'filechi' );
+		as_unschedule_all_actions( 'filechi_restore_batch', array(), 'filechi' );
+		as_unschedule_all_actions( 'filechi_retry_restore_attachment', array(), 'filechi' );
 	}
 	wp_clear_scheduled_hook( 'filechi_process_migration_batch' );
 	wp_clear_scheduled_hook( 'filechi_retry_attachment_offload' );
 	wp_clear_scheduled_hook( 'filechi_migrate_files_batch' );
+	wp_clear_scheduled_hook( 'filechi_restore_batch' );
+	wp_clear_scheduled_hook( 'filechi_retry_restore_attachment' );
 
 	// Delete all FileChi transients using esc_like to safely escape '_' in SQL
 	$transient_pattern = $wpdb->esc_like( '_transient_filechi_' ) . '%';
@@ -67,6 +71,7 @@ function filechi_uninstall_site() {
 	delete_option( 'filechi_settings' );
 	delete_option( 'filechi_db_version' );
 	delete_option( 'filechi_migration_status' );
+	delete_option( 'filechi_restore_state' );
 	delete_option( 'filechi_protected_path_missing_notice' );
 	delete_option( 'filechi_files_migration_progress' );
 	delete_option( 'filechi_db_upgrade_error' );
