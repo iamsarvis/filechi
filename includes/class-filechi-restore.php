@@ -70,6 +70,17 @@ class FileChi_Restore {
 	 * @param bool $delete_remote Whether to delete remote copies after local verification.
 	 * @return array<string, mixed>|\WP_Error State array on success, WP_Error on validation failure.
 	 */
+	public static function start($provider_id, $delete_remote = false) {
+		return self::start_restore($provider_id, $delete_remote);
+	}
+
+	/**
+	 * Starts a restore process for the designated provider (legacy alias).
+	 *
+	 * @param int  $provider_id   Provider ID to restore files from.
+	 * @param bool $delete_remote Whether to delete remote copies after local verification.
+	 * @return array<string, mixed>|\WP_Error State array on success, WP_Error on validation failure.
+	 */
 	public static function start_restore($provider_id, $delete_remote = false) {
 		$provider_id = absint($provider_id);
 		$provider    = FileChi_DB::get_provider($provider_id, true);
@@ -114,69 +125,105 @@ class FileChi_Restore {
 	/**
 	 * Pauses the active restore operation.
 	 *
-	 * @return array<string, mixed> Updated state array.
+	 * @return array<string, mixed>|\WP_Error Updated state array or error.
 	 */
-	public static function pause_restore() {
+	public static function pause() {
 		$state = get_option(self::OPTION_STATE, array());
-		if (is_array($state) && !empty($state)) {
-			$state['status'] = 'paused';
-			update_option(self::OPTION_STATE, $state, false);
+		if (empty($state) || !is_array($state) || empty($state['provider_id'])) {
+			return new WP_Error('no_active_restore', __('No active restore operation found to pause.', 'filechi'), array('status' => 400));
 		}
+
+		$state['status'] = 'paused';
+		update_option(self::OPTION_STATE, $state, false);
 
 		if (function_exists('as_unschedule_all_actions')) {
 			as_unschedule_all_actions(self::ACTION_HOOK);
 		}
 
-		return is_array($state) ? $state : array();
+		return self::get_status();
+	}
+
+	/**
+	 * Legacy alias for pause.
+	 *
+	 * @return array<string, mixed>|\WP_Error
+	 */
+	public static function pause_restore() {
+		return self::pause();
 	}
 
 	/**
 	 * Resumes a paused restore operation.
 	 *
-	 * @return array<string, mixed> Updated state array.
+	 * @return array<string, mixed>|\WP_Error Updated state array or error.
 	 */
-	public static function resume_restore() {
+	public static function resume() {
 		$state = get_option(self::OPTION_STATE, array());
-		if (is_array($state) && !empty($state)) {
-			$state['status'] = 'running';
-			update_option(self::OPTION_STATE, $state, false);
+		if (empty($state) || !is_array($state) || empty($state['provider_id'])) {
+			return new WP_Error('no_active_restore', __('No restore operation found to resume.', 'filechi'), array('status' => 400));
+		}
 
-			if (function_exists('as_schedule_single_action')) {
-				if (!function_exists('as_has_scheduled_action') || !as_has_scheduled_action(self::ACTION_HOOK)) {
-					as_schedule_single_action(time() + 1, self::ACTION_HOOK);
-				}
+		$state['status'] = 'running';
+		update_option(self::OPTION_STATE, $state, false);
+
+		if (function_exists('as_schedule_single_action')) {
+			if (!function_exists('as_has_scheduled_action') || !as_has_scheduled_action(self::ACTION_HOOK)) {
+				as_schedule_single_action(time() + 1, self::ACTION_HOOK);
 			}
 		}
 
-		return is_array($state) ? $state : array();
+		return self::get_status();
+	}
+
+	/**
+	 * Legacy alias for resume.
+	 *
+	 * @return array<string, mixed>|\WP_Error
+	 */
+	public static function resume_restore() {
+		return self::resume();
 	}
 
 	/**
 	 * Resets failure and give-up flags and resumes restore.
 	 *
-	 * @return array<string, mixed> Updated state array.
+	 * @return array<string, mixed>|\WP_Error Count and state array or error.
 	 */
 	public static function retry_failed() {
 		$state = get_option(self::OPTION_STATE, array());
-		if (is_array($state) && !empty($state['provider_id'])) {
-			FileChi_DB::reset_failed_restore_attachments((int) $state['provider_id']);
-			$state['status'] = 'running';
-			if (isset($state['counts']['failed'])) {
-				$state['counts']['failed'] = 0;
-			}
-			if (isset($state['counts']['given_up'])) {
-				$state['counts']['given_up'] = 0;
-			}
-			update_option(self::OPTION_STATE, $state, false);
+		if (empty($state) || !is_array($state) || empty($state['provider_id'])) {
+			return new WP_Error('no_active_restore', __('No restore operation found to retry.', 'filechi'), array('status' => 400));
+		}
 
-			if (function_exists('as_schedule_single_action')) {
-				if (!function_exists('as_has_scheduled_action') || !as_has_scheduled_action(self::ACTION_HOOK)) {
-					as_schedule_single_action(time() + 1, self::ACTION_HOOK);
-				}
+		$reset_count = FileChi_DB::reset_failed_restore_attachments((int) $state['provider_id']);
+		$state['status'] = 'running';
+		if (isset($state['counts']['failed'])) {
+			$state['counts']['failed'] = 0;
+		}
+		if (isset($state['counts']['given_up'])) {
+			$state['counts']['given_up'] = 0;
+		}
+		update_option(self::OPTION_STATE, $state, false);
+
+		if (function_exists('as_schedule_single_action')) {
+			if (!function_exists('as_has_scheduled_action') || !as_has_scheduled_action(self::ACTION_HOOK)) {
+				as_schedule_single_action(time() + 1, self::ACTION_HOOK);
 			}
 		}
 
-		return is_array($state) ? $state : array();
+		return array(
+			'reset_count' => $reset_count,
+			'state'       => self::get_status(),
+		);
+	}
+
+	/**
+	 * Retrieves complete current restore status and system disk info for UI/API.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_state() {
+		return self::get_status();
 	}
 
 	/**

@@ -150,6 +150,72 @@ class FileChi_REST extends WP_REST_Controller {
 				'permission_callback' => array($this, 'check_admin_permissions'),
 			)
 		);
+
+		// Restore engine routes
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/restore/start',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array($this, 'handle_restore_start'),
+				'permission_callback' => array($this, 'check_admin_permissions'),
+				'args'                => array(
+					'provider_id'   => array(
+						'type'              => 'integer',
+						'required'          => true,
+						'minimum'           => 1,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'delete_remote' => array(
+						'type'              => 'boolean',
+						'required'          => false,
+						'default'           => false,
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/restore/pause',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array($this, 'handle_restore_pause'),
+				'permission_callback' => array($this, 'check_admin_permissions'),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/restore/resume',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array($this, 'handle_restore_resume'),
+				'permission_callback' => array($this, 'check_admin_permissions'),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/restore/retry-failed',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array($this, 'handle_restore_retry_failed'),
+				'permission_callback' => array($this, 'check_admin_permissions'),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/restore/status',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array($this, 'handle_restore_status'),
+				'permission_callback' => array($this, 'check_admin_permissions'),
+			)
+		);
 	}
 
 	/**
@@ -513,5 +579,87 @@ class FileChi_REST extends WP_REST_Controller {
 			'page'  => floor($offset / $limit) + 1,
 			'pages' => ceil($total / $limit),
 		));
+	}
+
+	/**
+	 * Starts remote restore for a specified provider.
+	 *
+	 * @param WP_REST_Request $request REST request object.
+	 * @return WP_REST_Response|WP_Error Response or error.
+	 */
+	public function handle_restore_start($request) {
+		$provider_id   = absint($request->get_param('provider_id'));
+		$delete_remote = (bool) $request->get_param('delete_remote');
+
+		if (!$provider_id) {
+			return new WP_Error('invalid_provider_id', __('A valid positive provider ID is required.', 'filechi'), array('status' => 400));
+		}
+
+		$result = FileChi_Restore::start($provider_id, $delete_remote);
+		if (is_wp_error($result)) {
+			$data = $result->get_error_data();
+			if (empty($data['status'])) {
+				$result->add_data(array('status' => 400));
+			}
+			return $result;
+		}
+
+		return rest_ensure_response($result);
+	}
+
+	/**
+	 * Pauses active restore operation.
+	 *
+	 * @param WP_REST_Request $request REST request object.
+	 * @return WP_REST_Response|WP_Error Response or error.
+	 */
+	public function handle_restore_pause($request) {
+		$result = FileChi_Restore::pause();
+		if (is_wp_error($result)) {
+			return $result;
+		}
+
+		return rest_ensure_response($result);
+	}
+
+	/**
+	 * Resumes paused restore operation.
+	 *
+	 * @param WP_REST_Request $request REST request object.
+	 * @return WP_REST_Response|WP_Error Response or error.
+	 */
+	public function handle_restore_resume($request) {
+		$result = FileChi_Restore::resume();
+		if (is_wp_error($result)) {
+			return $result;
+		}
+
+		return rest_ensure_response($result);
+	}
+
+	/**
+	 * Resets failed restore attachments to allow re-processing.
+	 *
+	 * @param WP_REST_Request $request REST request object.
+	 * @return WP_REST_Response|WP_Error Response or error.
+	 */
+	public function handle_restore_retry_failed($request) {
+		$result = FileChi_Restore::retry_failed();
+		if (is_wp_error($result)) {
+			return $result;
+		}
+
+		return rest_ensure_response($result);
+	}
+
+	/**
+	 * Retrieves current restore status.
+	 *
+	 * @param WP_REST_Request $request REST request object.
+	 * @return WP_REST_Response
+	 */
+	public function handle_restore_status($request) {
+		$state = FileChi_Restore::get_state();
+		return rest_ensure_response($state);
 	}
 }

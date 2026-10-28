@@ -1268,11 +1268,12 @@ class FileChi_DB {
 	 * Resets failure and given_up flags on attachments for a provider to allow retrying restore.
 	 *
 	 * @param int $provider_id Provider ID.
-	 * @return void
+	 * @return int Number of reset attachments.
 	 */
 	public static function reset_failed_restore_attachments($provider_id) {
 		global $wpdb;
 		$provider_id = absint($provider_id);
+		$count       = 0;
 
 		$ids = $wpdb->get_col(
 			$wpdb->prepare(
@@ -1287,7 +1288,10 @@ class FileChi_DB {
 				delete_post_meta((int) $post_id, '_filechi_restore_given_up');
 				delete_post_meta((int) $post_id, '_filechi_restore_last_error');
 				delete_post_meta((int) $post_id, '_filechi_restore_retry_scheduled');
+				$count++;
 			}
 		}
+
+		return $count;
 	}
 }
