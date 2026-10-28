@@ -345,28 +345,7 @@ class FileChi_Restore {
 
 		foreach ($attachment_ids as $attachment_id) {
 			$attachment_id = absint($attachment_id);
-
-			$lock_token = FileChi_Media::acquire_lock($attachment_id);
-			if (!$lock_token) {
-				continue; // Skip attachment currently locked by another worker
-			}
-
-			try {
-				$res = self::restore_attachment($attachment_id, $provider, $driver, $delete_remote);
-
-				if ($res === true) {
-					// Success: attachment was finalized
-					delete_post_meta($attachment_id, '_filechi_restore_failure_count');
-					delete_post_meta($attachment_id, '_filechi_restore_given_up');
-					delete_post_meta($attachment_id, '_filechi_restore_last_error');
-					delete_post_meta($attachment_id, '_filechi_restore_retry_scheduled');
-				} else {
-					// Failure: record failure count, backoff, and give up if reached limit
-					self::handle_restore_failure($attachment_id, $res);
-				}
-			} finally {
-				FileChi_Media::release_lock($attachment_id, $lock_token);
-			}
+			self::restore_attachment($attachment_id, $provider, $driver, $delete_remote);
 		}
 
 		// Recalculate live counts for restore state
@@ -476,24 +455,7 @@ class FileChi_Restore {
 		$state         = get_option(self::OPTION_STATE, array());
 		$delete_remote = is_array($state) && !empty($state['delete_remote']);
 
-		$lock_token = FileChi_Media::acquire_lock($attachment_id);
-		if (!$lock_token) {
-			return;
-		}
-
-		try {
-			$res = self::restore_attachment($attachment_id, $provider, $driver, $delete_remote);
-			if ($res === true) {
-				delete_post_meta($attachment_id, '_filechi_restore_failure_count');
-				delete_post_meta($attachment_id, '_filechi_restore_given_up');
-				delete_post_meta($attachment_id, '_filechi_restore_last_error');
-				delete_post_meta($attachment_id, '_filechi_restore_retry_scheduled');
-			} else {
-				self::handle_restore_failure($attachment_id, $res);
-			}
-		} finally {
-			FileChi_Media::release_lock($attachment_id, $lock_token);
-		}
+		self::restore_attachment($attachment_id, $provider, $driver, $delete_remote);
 
 		self::update_state_counts($provider_id);
 	}
@@ -521,8 +483,8 @@ class FileChi_Restore {
 			return;
 		}
 
-		// Exponential backoff: 60s * 2^(failures - 1), capped at 30 minutes (1800s)
-		$delay = min(1800, 60 * (int) pow(2, max(0, $failures - 1)));
+		// Exponential backoff: 30s * 2^(failures - 1), capped at 30 minutes (1800s)
+		$delay = min(1800, 30 * (int) pow(2, max(0, $failures - 1)));
 		update_post_meta($attachment_id, '_filechi_restore_retry_scheduled', 1);
 
 		if (function_exists('as_schedule_single_action')) {
@@ -538,13 +500,74 @@ class FileChi_Restore {
 	 *
 	 * Implements items R1.3 and R1.4.
 	 *
-	 * @param int                       $attachment_id Post ID of the attachment.
-	 * @param array<string, mixed>      $provider      Provider database record.
-	 * @param FileChi_Storage_Interface $driver        Configured storage driver.
-	 * @param bool                      $delete_remote Whether to delete remote copies after finalization.
-	 * @return true|string True on success, error reason code on failure.
+	 * @param int                                  $attachment_id Post ID of the attachment.
+	 * @param array<string, mixed>|int|null        $provider      Provider database record or ID.
+	 * @param FileChi_Storage_Interface|bool|null  $driver        Optional configured storage driver or delete_remote boolean.
+	 * @param bool                                 $delete_remote Whether to delete remote copies after finalization.
+	 * @return bool True on success, false on failure or lock.
 	 */
-	public static function restore_attachment($attachment_id, array $provider, FileChi_Storage_Interface $driver, $delete_remote = false) {
+	public static function restore_attachment($attachment_id, $provider = null, $driver = null, $delete_remote = false) {
+		if (is_bool($driver)) {
+			$delete_remote = $driver;
+			$driver        = null;
+		}
+
+		$attachment_id = absint($attachment_id);
+		if (!$attachment_id) {
+			return false;
+		}
+
+		$lock_token = FileChi_Media::acquire_lock($attachment_id);
+		if (!$lock_token) {
+			return false;
+		}
+
+		try {
+			if ($provider === null) {
+				$provider = FileChi_DB::get_default_provider();
+			}
+			if (is_numeric($provider)) {
+				$provider = FileChi_DB::get_provider((int) $provider, true);
+			}
+			if (!is_array($provider) || empty($provider['id'])) {
+				self::handle_restore_failure($attachment_id, 'invalid_provider');
+				return false;
+			}
+
+			if ($driver === null) {
+				$driver = FileChi_Storage_Factory::create($provider);
+			}
+			if (!$driver instanceof FileChi_Storage_Interface) {
+				self::handle_restore_failure($attachment_id, 'invalid_driver');
+				return false;
+			}
+
+			$reason = self::do_restore_attachment_files($attachment_id, $provider, $driver, $delete_remote);
+			if ($reason === true) {
+				delete_post_meta($attachment_id, '_filechi_restore_failure_count');
+				delete_post_meta($attachment_id, '_filechi_restore_given_up');
+				delete_post_meta($attachment_id, '_filechi_restore_last_error');
+				delete_post_meta($attachment_id, '_filechi_restore_retry_scheduled');
+				return true;
+			}
+
+			self::handle_restore_failure($attachment_id, $reason);
+			return false;
+		} finally {
+			FileChi_Media::release_lock($attachment_id, $lock_token);
+		}
+	}
+
+	/**
+	 * Internal worker restoring all primary files of an attachment.
+	 *
+	 * @param int                       $attachment_id Post ID of the attachment.
+	 * @param array<string, mixed>      $provider      Provider record.
+	 * @param FileChi_Storage_Interface $driver        Storage driver.
+	 * @param bool                      $delete_remote Whether to delete remote copies.
+	 * @return true|string True on success, error reason code string on failure.
+	 */
+	private static function do_restore_attachment_files($attachment_id, array $provider, FileChi_Storage_Interface $driver, $delete_remote = false) {
 		$provider_id = (int) $provider['id'];
 		$file_rows   = FileChi_DB::get_attachment_files_by_path($attachment_id, $provider_id);
 

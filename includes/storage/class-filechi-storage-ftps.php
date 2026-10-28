@@ -1589,7 +1589,13 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 		$ch  = $this->create_curl_handle($url);
 
 		curl_setopt($ch, CURLOPT_FILE, $fp);
-		curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
+		curl_setopt(
+			$ch,
+			CURLOPT_WRITEFUNCTION,
+			function ($ch, $data) use ($fp) {
+				return fwrite($fp, $data);
+			}
+		);
 
 		if ($filesize <= 0) {
 			$size_check = $this->get_size($remote_path);

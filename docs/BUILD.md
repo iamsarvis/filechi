@@ -131,6 +131,33 @@ Spawns a real explicit FTPS server on loopback (`pyftpdlib` with TLS), generates
 
 *Expected result:* `ALL 7 FTPS REAL CHECKS PASSED SUCCESSFULLY!`.
 
+---
+
+### 2.7 Real FTPS Restore Round-Trip Test (`tests/real/test_restore_real_ftps.php`)
+
+Tests full remote-to-local restore round-trip over explicit TLS against a real `pyftpdlib` server:
+1. Generates local test files with multiple path scenarios, including nested subdirectories and Persian UTF-8 filenames (`2026/10/تصویر-تست.jpg`).
+2. Calculates original SHA-256 checksums and uploads files over encrypted TLS data connection to absolute root path `/uploads`.
+3. Verifies remote existence and size, then deletes the local copies to simulate offloaded media.
+4. Downloads each file using `FileChi_Storage_FTPS::download()`, verifying streaming to local disk without memory inflation.
+5. Computes SHA-256 checksum of restored files and asserts 100% exact match against the original.
+6. Cleans up remote files and temporary test directories.
+
+- **PowerShell:**
+  ```powershell
+  php tests/real/test_restore_real_ftps.php
+  # Or via python wrapper:
+  python tests/real/test_ftps_server.py tests/real/test_restore_real_ftps.php
+  ```
+- **CMD:**
+  ```cmd
+  php tests\real\test_restore_real_ftps.php
+  REM Or via python wrapper:
+  python tests\real\test_ftps_server.py tests\real\test_restore_real_ftps.php
+  ```
+
+*Expected result:* `ALL 3 REAL FTPS RESTORE CHECKS PASSED SUCCESSFULLY!`.
+
 ## 3. Rebuilding `includes/vendor` From a Clean Clone
 
 FileChi ships its runtime libraries directly inside `includes/vendor/` so end-users never have to run Composer. To regenerate `includes/vendor/` from source:

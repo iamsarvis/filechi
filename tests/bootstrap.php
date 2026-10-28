@@ -219,6 +219,15 @@ if (!function_exists('wp_send_json_error')) {
 	}
 }
 
+if (!function_exists('wp_mkdir_p')) {
+	function wp_mkdir_p($target) {
+		if (is_dir($target)) {
+			return true;
+		}
+		return @mkdir($target, 0777, true);
+	}
+}
+
 if (!function_exists('wp_salt')) {
 	function wp_salt($scheme = 'auth') {
 		return 'test_wp_salt_' . $scheme . '_1234567890abcdef';
