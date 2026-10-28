@@ -62,6 +62,11 @@ class FileChi_Media {
 	 * @return array|false Unmodified metadata.
 	 */
 	public function handle_attachment_metadata($metadata, $attachment_id) {
+		$settings = wp_parse_args(get_option('filechi_settings', array()), FileChi_Activator::default_settings());
+		if (empty($settings['offload_enabled'])) {
+			return $metadata;
+		}
+
 		self::offload_attachment($attachment_id, null, is_array($metadata) ? $metadata : array());
 		return $metadata;
 	}
@@ -85,6 +90,11 @@ class FileChi_Media {
 			return false;
 		}
 
+		$settings = wp_parse_args(get_option('filechi_settings', array()), FileChi_Activator::default_settings());
+		if (empty($settings['offload_enabled'])) {
+			return false;
+		}
+
 		$lock_token = self::acquire_lock($attachment_id);
 		if (!$lock_token) {
 			// Attachment is currently locked by another worker: skip
@@ -99,6 +109,18 @@ class FileChi_Media {
 				$provider = FileChi_DB::get_provider((int) $provider, true);
 			}
 			if (!$provider) {
+				return false;
+			}
+
+			$provider_id = !empty($provider['id']) ? (int) $provider['id'] : 0;
+			if ($provider_id && class_exists('FileChi_Restore') && FileChi_Restore::is_restore_running_for_provider($provider_id)) {
+				$attached_file = get_post_meta($attachment_id, '_wp_attached_file', true);
+				if (empty($attached_file) && is_array($metadata) && !empty($metadata['file'])) {
+					$attached_file = $metadata['file'];
+				}
+				$rel_path = !empty($attached_file) ? self::get_relative_upload_path($attached_file) : '';
+				$reason   = sprintf('Upload skipped offload: restore is active for provider %d', $provider_id);
+				FileChi_DB::log_transfer($attachment_id, $provider_id, $rel_path, 0, 'skipped', $reason);
 				return false;
 			}
 

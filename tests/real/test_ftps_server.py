@@ -121,6 +121,8 @@ def main():
 
         script_dir = os.path.dirname(os.path.abspath(__file__))
         check_script = os.path.join(script_dir, "check_ftps_real.php")
+        if len(sys.argv) > 1 and sys.argv[1].endswith(".php"):
+            check_script = os.path.abspath(sys.argv[1])
 
         cmd = [php_bin, check_script, "127.0.0.1", str(port), "testuser", "testpass", pin, "/uploads"]
         print(f"Executing checks with absolute root /uploads: {' '.join(cmd)}\n")

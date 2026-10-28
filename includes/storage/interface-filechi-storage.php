@@ -81,7 +81,18 @@ interface FileChi_Storage_Interface {
 	public function stream_to_output($remote_path, $chunk_size = 1048576);
 
 	/**
-	 * Returns the most recent error message or failure reason from a storage operation.
+	 * Downloads a remote file directly into a local file destination.
+	 *
+	 * Streams content directly to disk without buffering the whole file in memory.
+	 *
+	 * @param string $remote_path Relative remote path/key.
+	 * @param string $local_file Absolute path to local file.
+	 * @param int    $filesize Optional known file size to scale transfer timeout.
+	 * @return true|string True on success, or string reason code on failure.
+	 */
+	public function download($remote_path, $local_file, $filesize = 0);
+
+	/**
 	 *
 	 * @return string Error message, or empty string if no error.
 	 */

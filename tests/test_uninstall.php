@@ -55,6 +55,7 @@ $GLOBALS['mock_options'] = array(
 	'filechi_settings'                      => array('delete_data_on_uninstall' => 1),
 	'filechi_db_version'                    => '1.1.0',
 	'filechi_migration_status'              => 'idle',
+	'filechi_restore_state'                 => array('status' => 'idle'),
 	'filechi_protected_path_missing_notice' => array('attachment_id' => 1),
 	'filechi_files_migration_progress'      => array('last_id' => 5),
 	'filechi_db_upgrade_error'              => 'some error',
@@ -72,9 +73,11 @@ assert(count($dropped_tables) === 3);
 // Check: options must be deleted
 echo 'filechi_settings deleted: ' . (!isset($GLOBALS['mock_options']['filechi_settings']) ? 'PASS' : 'FAIL') . "\n";
 echo 'filechi_db_version deleted: ' . (!isset($GLOBALS['mock_options']['filechi_db_version']) ? 'PASS' : 'FAIL') . "\n";
+echo 'filechi_restore_state deleted: ' . (!isset($GLOBALS['mock_options']['filechi_restore_state']) ? 'PASS' : 'FAIL') . "\n";
 assert(!isset($GLOBALS['mock_options']['filechi_settings']));
 assert(!isset($GLOBALS['mock_options']['filechi_db_version']));
 assert(!isset($GLOBALS['mock_options']['filechi_migration_status']));
+assert(!isset($GLOBALS['mock_options']['filechi_restore_state']));
 assert(!isset($GLOBALS['mock_options']['filechi_protected_path_missing_notice']));
 assert(!isset($GLOBALS['mock_options']['filechi_files_migration_progress']));
 assert(!isset($GLOBALS['mock_options']['filechi_db_upgrade_error']));
@@ -100,5 +103,7 @@ echo 'Deactivation cleared WP-Cron hooks: ' . (in_array('filechi_process_migrati
 assert(!empty($GLOBALS['mock_unscheduled_actions']));
 assert(in_array('filechi_process_migration_batch', $GLOBALS['mock_scheduled_hooks_cleared']));
 assert(in_array('filechi_migrate_files_batch', $GLOBALS['mock_scheduled_hooks_cleared']));
+assert(in_array('filechi_restore_batch', $GLOBALS['mock_scheduled_hooks_cleared']));
+assert(in_array('filechi_retry_restore_attachment', $GLOBALS['mock_scheduled_hooks_cleared']));
 
 echo "\nALL UNINSTALL TESTS PASSED!\n";

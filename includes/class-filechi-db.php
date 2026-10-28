@@ -1127,4 +1127,171 @@ class FileChi_DB {
 
 		return $settings;
 	}
+
+	/**
+	 * Deletes file index rows for a specific attachment and provider.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @param int $provider_id   Provider ID.
+	 * @return int Number of deleted rows.
+	 */
+	public static function delete_attachment_files_for_provider($attachment_id, $provider_id) {
+		global $wpdb;
+		$table         = self::get_files_table();
+		$attachment_id = absint($attachment_id);
+		$provider_id   = absint($provider_id);
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		return (int) $wpdb->query($wpdb->prepare("DELETE FROM {$table} WHERE attachment_id = %d AND provider_id = %d", $attachment_id, $provider_id));
+	}
+
+	/**
+	 * Retrieves un-restored attachment IDs for a specified provider.
+	 *
+	 * Finds attachments where _filechi_provider_id = provider_id and _filechi_offloaded = '1'.
+	 *
+	 * @param int  $provider_id      Provider ID.
+	 * @param int  $limit            Maximum IDs to return.
+	 * @param bool $include_given_up Whether to include items that have given up.
+	 * @return array<int> List of attachment post IDs.
+	 */
+	public static function get_unrestored_attachment_ids($provider_id, $limit = 10, $include_given_up = false) {
+		global $wpdb;
+		$provider_id = absint($provider_id);
+		$limit       = max(1, absint($limit));
+
+		if ($include_given_up) {
+			return array_map(
+				'intval',
+				$wpdb->get_col(
+					$wpdb->prepare(
+						"SELECT p.ID FROM {$wpdb->posts} p
+						 INNER JOIN {$wpdb->postmeta} pm_prov ON (p.ID = pm_prov.post_id AND pm_prov.meta_key = '_filechi_provider_id' AND pm_prov.meta_value = %d)
+						 INNER JOIN {$wpdb->postmeta} pm_off ON (p.ID = pm_off.post_id AND pm_off.meta_key = '_filechi_offloaded' AND pm_off.meta_value = '1')
+						 WHERE p.post_type = 'attachment'
+						   AND p.post_status = 'inherit'
+						 ORDER BY p.ID ASC
+						 LIMIT %d",
+						$provider_id,
+						$limit
+					)
+				)
+			);
+		}
+
+		return array_map(
+			'intval',
+			$wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT p.ID FROM {$wpdb->posts} p
+					 INNER JOIN {$wpdb->postmeta} pm_prov ON (p.ID = pm_prov.post_id AND pm_prov.meta_key = '_filechi_provider_id' AND pm_prov.meta_value = %d)
+					 INNER JOIN {$wpdb->postmeta} pm_off ON (p.ID = pm_off.post_id AND pm_off.meta_key = '_filechi_offloaded' AND pm_off.meta_value = '1')
+					 LEFT JOIN {$wpdb->postmeta} pm_give ON (p.ID = pm_give.post_id AND pm_give.meta_key = '_filechi_restore_given_up')
+					 WHERE p.post_type = 'attachment'
+					   AND p.post_status = 'inherit'
+					   AND (pm_give.meta_value IS NULL OR pm_give.meta_value != '1')
+					 ORDER BY p.ID ASC
+					 LIMIT %d",
+					$provider_id,
+					$limit
+				)
+			)
+		);
+	}
+
+	/**
+	 * Returns total count of attachments currently offloaded to a provider.
+	 *
+	 * @param int  $provider_id      Provider ID.
+	 * @param bool $include_given_up Whether to include items that gave up on restore.
+	 * @return int Total attachment count.
+	 */
+	public static function get_unrestored_attachment_count($provider_id, $include_given_up = true) {
+		global $wpdb;
+		$provider_id = absint($provider_id);
+
+		if ($include_given_up) {
+			return (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p
+					 INNER JOIN {$wpdb->postmeta} pm_prov ON (p.ID = pm_prov.post_id AND pm_prov.meta_key = '_filechi_provider_id' AND pm_prov.meta_value = %d)
+					 INNER JOIN {$wpdb->postmeta} pm_off ON (p.ID = pm_off.post_id AND pm_off.meta_key = '_filechi_offloaded' AND pm_off.meta_value = '1')
+					 WHERE p.post_type = 'attachment'
+					   AND p.post_status = 'inherit'",
+					$provider_id
+				)
+			);
+		}
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p
+				 INNER JOIN {$wpdb->postmeta} pm_prov ON (p.ID = pm_prov.post_id AND pm_prov.meta_key = '_filechi_provider_id' AND pm_prov.meta_value = %d)
+				 INNER JOIN {$wpdb->postmeta} pm_off ON (p.ID = pm_off.post_id AND pm_off.meta_key = '_filechi_offloaded' AND pm_off.meta_value = '1')
+				 LEFT JOIN {$wpdb->postmeta} pm_give ON (p.ID = pm_give.post_id AND pm_give.meta_key = '_filechi_restore_given_up')
+				 WHERE p.post_type = 'attachment'
+				   AND p.post_status = 'inherit'
+				   AND (pm_give.meta_value IS NULL OR pm_give.meta_value != '1')",
+				$provider_id
+			)
+		);
+	}
+
+	/**
+	 * Returns total count and bytes of primary files stored for a provider.
+	 *
+	 * @param int $provider_id Provider ID.
+	 * @return array<string, int|float> ['count' => int, 'bytes' => float]
+	 */
+	public static function get_provider_files_stats($provider_id) {
+		global $wpdb;
+		$table       = self::get_files_table();
+		$provider_id = absint($provider_id);
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT COUNT(*) as total_count, SUM(size) as total_bytes FROM {$table} WHERE provider_id = %d AND role = 'primary' AND status = 'transferred'",
+				$provider_id
+			),
+			ARRAY_A
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return array(
+			'count' => isset($row['total_count']) ? (int) $row['total_count'] : 0,
+			'bytes' => isset($row['total_bytes']) ? (double) $row['total_bytes'] : 0.0,
+		);
+	}
+
+	/**
+	 * Resets failure and given_up flags on attachments for a provider to allow retrying restore.
+	 *
+	 * @param int $provider_id Provider ID.
+	 * @return int Number of reset attachments.
+	 */
+	public static function reset_failed_restore_attachments($provider_id) {
+		global $wpdb;
+		$provider_id = absint($provider_id);
+		$count       = 0;
+
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_filechi_provider_id' AND meta_value = %d",
+				$provider_id
+			)
+		);
+
+		if (!empty($ids)) {
+			foreach ($ids as $post_id) {
+				delete_post_meta((int) $post_id, '_filechi_restore_failure_count');
+				delete_post_meta((int) $post_id, '_filechi_restore_given_up');
+				delete_post_meta((int) $post_id, '_filechi_restore_last_error');
+				delete_post_meta((int) $post_id, '_filechi_restore_retry_scheduled');
+				$count++;
+			}
+		}
+
+		return $count;
+	}
 }

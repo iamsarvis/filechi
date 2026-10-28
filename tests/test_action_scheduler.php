@@ -26,6 +26,7 @@ echo "Scheduled actions count: $scheduled_count -> " . ($scheduled_count === 1 ?
 assert($scheduled_count === 1);
 assert($GLOBALS['mock_scheduled_actions'][0]['hook'] === 'filechi_retry_attachment_offload');
 assert($GLOBALS['mock_scheduled_actions'][0]['args']['attachment_id'] === 99);
+assert($GLOBALS['mock_scheduled_actions'][0]['group'] === 'filechi');
 
 echo "\n=== 3. FileChi_Migration::start_migration uses Action Scheduler ===\n";
 require_once FILECHI_DIR . 'includes/class-filechi-migration.php';
@@ -34,6 +35,7 @@ $total_count = count($GLOBALS['mock_scheduled_actions']);
 echo "Total scheduled actions count: $total_count -> " . ($total_count === 2 ? 'PASS' : 'FAIL') . "\n";
 assert($total_count === 2);
 assert($GLOBALS['mock_scheduled_actions'][1]['hook'] === 'filechi_process_migration_batch');
+assert($GLOBALS['mock_scheduled_actions'][1]['group'] === 'filechi');
 
 echo "\n=== 4. FileChi_Migration::pause_migration uses as_unschedule_all_actions ===\n";
 $GLOBALS['mock_unscheduled_actions'] = array();
@@ -42,5 +44,6 @@ $unscheduled_count = count($GLOBALS['mock_unscheduled_actions']);
 echo "Unscheduled actions count: $unscheduled_count -> " . ($unscheduled_count === 1 ? 'PASS' : 'FAIL') . "\n";
 assert($unscheduled_count === 1);
 assert($GLOBALS['mock_unscheduled_actions'][0]['hook'] === 'filechi_process_migration_batch');
+assert($GLOBALS['mock_unscheduled_actions'][0]['group'] === 'filechi');
 
 echo "\nALL ACTION SCHEDULER TESTS PASSED!\n";

@@ -1564,6 +1564,75 @@ class FileChi_Storage_FTPS implements FileChi_Storage_Interface {
 	/**
 	 * {@inheritdoc}
 	 */
+	public function download($remote_path, $local_file, $filesize = 0) {
+		$this->last_error = '';
+
+		try {
+			$resolved_path = $this->resolve_path($remote_path);
+		} catch (\Exception $e) {
+			$this->last_error = $e->getMessage();
+			return 'invalid_path';
+		}
+
+		$dest_dir = dirname($local_file);
+		if (!is_dir($dest_dir) && function_exists('wp_mkdir_p')) {
+			wp_mkdir_p($dest_dir);
+		}
+
+		$fp = @fopen($local_file, 'wb');
+		if (!$fp) {
+			$this->last_error = "Could not open local file for writing: {$local_file}";
+			return 'local_file_open_failed';
+		}
+
+		$url = $this->build_curl_url($resolved_path);
+		$ch  = $this->create_curl_handle($url);
+
+		curl_setopt($ch, CURLOPT_FILE, $fp);
+		curl_setopt(
+			$ch,
+			CURLOPT_WRITEFUNCTION,
+			function ($ch, $data) use ($fp) {
+				return fwrite($fp, $data);
+			}
+		);
+
+		if ($filesize <= 0) {
+			$size_check = $this->get_size($remote_path);
+			$filesize   = $size_check > 0 ? $size_check : 0;
+		}
+		$this->apply_timeouts($ch, $filesize);
+
+		$exec_result   = curl_exec($ch);
+		$curl_error    = curl_error($ch);
+		$curl_errno    = curl_errno($ch);
+		$response_code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+		curl_close($ch);
+		fclose($fp);
+
+		if ($exec_result === false) {
+			if (file_exists($local_file)) {
+				@unlink($local_file);
+			}
+			$this->last_error = $this->map_curl_error($curl_errno, $curl_error, $response_code, "FTPS download failed for {$remote_path}");
+			if ($curl_errno === 28) {
+				return 'timeout';
+			}
+			if ($curl_errno === 67) {
+				return 'login_denied';
+			}
+			if ($response_code === 550) {
+				return 'file_not_found';
+			}
+			return 'download_failed';
+		}
+
+		return true;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 */
 	public function get_last_error() {
 		return $this->last_error;
 	}

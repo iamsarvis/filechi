@@ -219,6 +219,15 @@ if (!function_exists('wp_send_json_error')) {
 	}
 }
 
+if (!function_exists('wp_mkdir_p')) {
+	function wp_mkdir_p($target) {
+		if (is_dir($target)) {
+			return true;
+		}
+		return @mkdir($target, 0777, true);
+	}
+}
+
 if (!function_exists('wp_salt')) {
 	function wp_salt($scheme = 'auth') {
 		return 'test_wp_salt_' . $scheme . '_1234567890abcdef';
@@ -778,6 +787,27 @@ if (!function_exists('wp_check_filetype')) {
 			'ext'  => $ext,
 			'type' => isset($types[$ext]) ? $types[$ext] : 'application/octet-stream',
 		);
+	}
+}
+
+if (!function_exists('size_format')) {
+	function size_format($bytes, $decimals = 0) {
+		$quant = array(
+			'TB' => 1099511627776,
+			'GB' => 1073741824,
+			'MB' => 1048576,
+			'KB' => 1024,
+			'B'  => 1,
+		);
+		if (0 === (int) $bytes) {
+			return '0 B';
+		}
+		foreach ($quant as $unit => $mag) {
+			if ((double) $bytes >= $mag) {
+				return number_format($bytes / $mag, $decimals) . ' ' . $unit;
+			}
+		}
+		return '0 B';
 	}
 }
 
