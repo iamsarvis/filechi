@@ -216,21 +216,39 @@ if (!$is_patched) {
 	echo "    [+] Attachment 101 URL: {$url_101}\n";
 	echo "    [+] Attachment 102 URL: {$url_102}\n";
 
+	// Restoring both brings both back locally (Item F13.7)
+	require_once FILECHI_DIR . 'includes/class-filechi-restore.php';
+
+	// 1. Restore Attachment 101
+	assert(!file_exists($local_file), 'Local file must not exist before restore');
+	$restore_101 = FileChi_Restore::restore_attachment(101, $provider, $driver, false);
+	assert($restore_101 === true, 'Restoring Attachment 101 must succeed');
+	assert(file_exists($local_file), 'Attachment 101 local file must exist');
+	assert(file_get_contents($local_file) === $content_101, 'Restored Attachment 101 content must match');
+	echo "    [+] Restoring Attachment 101 brought back original content_101 locally.\n";
+
+	// Clear local file so Attachment 102 can restore to the same path without conflict
+	@unlink($local_file);
+
+	// 2. Restore Attachment 102 (uses dup-102/ remote key!)
+	$restore_102 = FileChi_Restore::restore_attachment(102, $provider, $driver, false);
+	assert($restore_102 === true, 'Restoring Attachment 102 must succeed');
+	assert(file_exists($local_file), 'Attachment 102 local file must exist');
+	assert(file_get_contents($local_file) === $content_102, 'Restored Attachment 102 content must match');
+	echo "    [+] Restoring Attachment 102 brought back original content_102 locally.\n";
+
+	// Re-arm offload flags to test handle_delete_attachment behavior
+	update_post_meta(101, '_filechi_offloaded', 1);
+	update_post_meta(101, '_filechi_provider_id', 1);
+	update_post_meta(102, '_filechi_offloaded', 1);
+	update_post_meta(102, '_filechi_provider_id', 1);
+	update_post_meta(102, '_filechi_remote_prefix', 'dup-102/');
+
 	// Deleting Attachment 101 does NOT delete Attachment 102's remote file
 	$media->handle_delete_attachment(101);
 	assert($driver->exists($remote_key_101) === false, 'Attachment 101 remote file must be deleted');
 	assert($driver->exists($remote_key_102) === true, 'Attachment 102 remote file must NOT be deleted');
-	echo "    [+] Deleting Attachment 101 cleanly left Attachment 102 intact.\n";
-
-	// Restore Attachment 102 brings its file back locally
-	if (class_exists('FileChi_Restore')) {
-		require_once FILECHI_DIR . 'includes/class-filechi-restore.php';
-		$restore_res = FileChi_Restore::restore_attachment(102, $provider, $driver, false);
-		assert($restore_res === true, 'Restoring Attachment 102 must succeed');
-		assert(file_exists($local_file), 'Attachment 102 restored local file must exist');
-		assert(file_get_contents($local_file) === $content_102, 'Restored content must match 102');
-		echo "    [+] Attachment 102 restored back to local server with correct content.\n";
-	}
+	echo "    [+] Deleting Attachment 101 cleanly left Attachment 102 remote file intact.\n";
 
 	// Clean up remote file 102
 	$driver->delete($remote_key_102);
