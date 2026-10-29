@@ -488,6 +488,16 @@ class FileChi_Media {
 			$local_exists  = file_exists($abs_path);
 
 			if ($local_exists) {
+				// F13.4 Safety net: Re-check exact key immediately before upload (race window)
+				if (FileChi_DB::is_remote_key_taken($provider['id'], $remote_key, $attachment_id)) {
+					$all_succeeded = false;
+					$reason        = 'remote_key_collision';
+					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $expected_size, 'failed', $reason);
+					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'failed', array('size' => $expected_size, 'remote_key' => $remote_key, 'last_error' => $reason));
+					update_post_meta($attachment_id, '_filechi_last_error', $reason);
+					break;
+				}
+
 				$filesize = (int) filesize($abs_path);
 				$success  = $driver->upload($abs_path, $remote_key);
 

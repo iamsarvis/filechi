@@ -1383,6 +1383,38 @@ class FileChi_DB {
 	}
 
 	/**
+	 * Checks if a remote key is already transferred for another attachment on a given provider (Item F13.4).
+	 *
+	 * @param int    $provider_id Provider ID.
+	 * @param string $remote_key Remote storage key.
+	 * @param int    $exclude_attachment_id Attachment ID to exclude.
+	 * @return bool True if taken by another attachment, false otherwise.
+	 */
+	public static function is_remote_key_taken($provider_id, $remote_key, $exclude_attachment_id = 0) {
+		global $wpdb;
+		$table       = self::get_files_table();
+		$provider_id = absint($provider_id);
+		$remote_key  = sanitize_text_field($remote_key);
+
+		if ($provider_id <= 0 || empty($remote_key)) {
+			return false;
+		}
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$existing_aid = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT attachment_id FROM {$table} WHERE provider_id = %d AND remote_key = %s AND status = 'transferred' AND attachment_id != %d LIMIT 1",
+				$provider_id,
+				$remote_key,
+				(int) $exclude_attachment_id
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return !empty($existing_aid);
+	}
+
+	/**
 	 * Checks if any of the given candidate remote keys are already transferred for another attachment.
 	 *
 	 * @param int      $provider_id Provider ID.
