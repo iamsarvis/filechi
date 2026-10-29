@@ -481,6 +481,7 @@ class FileChi_Restore {
 		if ($is_unretryable || $failures >= self::MAX_FAILURES) {
 			update_post_meta($attachment_id, '_filechi_restore_given_up', 1);
 			delete_post_meta($attachment_id, '_filechi_restore_retry_scheduled');
+			delete_post_meta($attachment_id, '_filechi_remote_prefix');
 			if (function_exists('as_unschedule_action')) {
 				as_unschedule_action(self::RETRY_HOOK, array('attachment_id' => $attachment_id), 'filechi');
 			}
@@ -506,16 +507,11 @@ class FileChi_Restore {
 	 *
 	 * @param int                                  $attachment_id Post ID of the attachment.
 	 * @param array<string, mixed>|int|null        $provider      Provider database record or ID.
-	 * @param FileChi_Storage_Interface|bool|null  $driver        Optional configured storage driver or delete_remote boolean.
-	 * @param bool                                 $delete_remote Whether to delete remote copies after finalization.
+	 * @param FileChi_Storage_Interface|null $driver        Optional configured storage driver.
+	 * @param bool                           $delete_remote Whether to delete remote copies after finalization.
 	 * @return bool True on success, false on failure or lock.
 	 */
 	public static function restore_attachment($attachment_id, $provider = null, $driver = null, $delete_remote = false) {
-		if (is_bool($driver)) {
-			$delete_remote = $driver;
-			$driver        = null;
-		}
-
 		$attachment_id = absint($attachment_id);
 		if (!$attachment_id) {
 			return false;
@@ -552,6 +548,7 @@ class FileChi_Restore {
 				delete_post_meta($attachment_id, '_filechi_restore_given_up');
 				delete_post_meta($attachment_id, '_filechi_restore_last_error');
 				delete_post_meta($attachment_id, '_filechi_restore_retry_scheduled');
+				delete_post_meta($attachment_id, '_filechi_remote_prefix');
 				return true;
 			}
 
@@ -584,7 +581,7 @@ class FileChi_Restore {
 			$file_rows = array(
 				$attached => array(
 					'local_path' => $attached,
-					'remote_key' => $attached,
+					'remote_key' => FileChi_Media::get_remote_key($attachment_id, $attached),
 					'size'       => null,
 					'etag'       => null,
 					'status'     => 'transferred',
@@ -701,7 +698,7 @@ class FileChi_Restore {
 			$rand_token = function_exists('wp_generate_password') ? wp_generate_password(12, false, false) : bin2hex(random_bytes(6));
 			$temp_file  = $parent_dir . '/.filechi-restore-' . $rand_token . '.tmp';
 
-			$remote_key = (string) ($file_info['remote_key'] ?? $clean_local);
+			$remote_key = !empty($file_info['remote_key']) ? (string) $file_info['remote_key'] : FileChi_Media::get_remote_key($attachment_id, $clean_local);
 			$dl_res     = $driver->download($remote_key, $temp_file, max(0, $recorded_size));
 
 			if ($dl_res !== true) {
@@ -801,6 +798,7 @@ class FileChi_Restore {
 		delete_post_meta($attachment_id, '_filechi_restore_given_up');
 		delete_post_meta($attachment_id, '_filechi_restore_last_error');
 		delete_post_meta($attachment_id, '_filechi_restore_retry_scheduled');
+		delete_post_meta($attachment_id, '_filechi_remote_prefix');
 
 		// Delete its filechi_files rows for that provider
 		FileChi_DB::delete_attachment_files_for_provider($attachment_id, $provider_id);

@@ -75,6 +75,7 @@ try {
   updated_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   PRIMARY KEY  (id),
   UNIQUE KEY attachment_provider_hash (attachment_id, provider_id, path_hash),
+  KEY path_hash (path_hash),
   KEY local_path (local_path(191)),
   KEY provider_remote_status (provider_id, remote_key(191), status),
   KEY attachment_id (attachment_id),

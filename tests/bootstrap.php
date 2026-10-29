@@ -116,6 +116,13 @@ if (!function_exists('sanitize_text_field')) {
 	}
 }
 
+if (!function_exists('sanitize_file_name')) {
+	function sanitize_file_name($filename) {
+		$filename = preg_replace('/[\\\\\/:\*\?"<>\|\x00-\x1F]/', '', (string) $filename);
+		return trim($filename);
+	}
+}
+
 if (!function_exists('wp_unslash')) {
 	function wp_unslash($text) {
 		return stripslashes((string) $text);
@@ -288,6 +295,34 @@ if (!function_exists('wp_check_filetype')) {
 	}
 }
 
+if (!function_exists('wp_unique_filename')) {
+	function wp_unique_filename($dir, $filename, $unique_filename_callback = null) {
+		$filename = sanitize_file_name($filename);
+		$info     = pathinfo($filename);
+		$ext      = !empty($info['extension']) ? '.' . $info['extension'] : '';
+		$name     = basename($filename, $ext);
+
+		$number = '';
+		while (file_exists($dir . "/$filename")) {
+			$new_number = (int) $number + 1;
+			$filename   = str_replace(array("-{$number}{$ext}", "{$number}{$ext}"), "-{$new_number}{$ext}", $filename);
+			$number     = $new_number;
+		}
+
+		return apply_filters('wp_unique_filename', $filename, $ext, $dir, $unique_filename_callback, array(), $number);
+	}
+}
+
+if (!function_exists('wp_get_registered_image_subsizes')) {
+	function wp_get_registered_image_subsizes() {
+		return array(
+			'thumbnail' => array('width' => 150, 'height' => 150, 'crop' => true),
+			'medium'    => array('width' => 300, 'height' => 300, 'crop' => false),
+			'large'     => array('width' => 1024, 'height' => 1024, 'crop' => false),
+		);
+	}
+}
+
 if (!function_exists('get_option')) {
 	function get_option($option, $default = false) {
 		return $GLOBALS['mock_options'][$option] ?? $default;
@@ -438,7 +473,12 @@ if (!function_exists('add_action')) {
 }
 
 if (!function_exists('add_filter')) {
-	function add_filter($tag, $callback, $priority = 10, $accepted_args = 1) {}
+	function add_filter($tag, $callback, $priority = 10, $accepted_args = 1) {
+		$GLOBALS['wp_filter'][$tag][$priority][] = array(
+			'callback'      => $callback,
+			'accepted_args' => $accepted_args,
+		);
+	}
 }
 
 if (!function_exists('register_activation_hook')) {
@@ -472,6 +512,25 @@ if (!function_exists('did_action')) {
 
 if (!function_exists('apply_filters')) {
 	function apply_filters($tag, $value, ...$args) {
+		if (empty($GLOBALS['wp_filter'][$tag])) {
+			return $value;
+		}
+		$priorities = $GLOBALS['wp_filter'][$tag];
+		ksort($priorities);
+		foreach ($priorities as $priority => $callbacks) {
+			foreach ($callbacks as $item) {
+				if (is_array($item) && isset($item['callback'])) {
+					$cb       = $item['callback'];
+					$accepted = (int) ($item['accepted_args'] ?? 1);
+				} else {
+					$cb       = $item;
+					$accepted = 1;
+				}
+				$all_args  = array_merge(array($value), $args);
+				$pass_args = array_slice($all_args, 0, $accepted);
+				$value     = call_user_func_array($cb, $pass_args);
+			}
+		}
 		return $value;
 	}
 }
@@ -519,6 +578,24 @@ if (!class_exists('Mock_WPDB')) {
 				}
 				return $this->get_var_override;
 			}
+			if (strpos($query, 'HAVING COUNT(DISTINCT attachment_id) > 1') !== false && strpos($query, 'COUNT(*)') !== false) {
+				$groups = array();
+				if (isset($GLOBALS['mock_filechi_files_rows']) && is_array($GLOBALS['mock_filechi_files_rows'])) {
+					foreach ($GLOBALS['mock_filechi_files_rows'] as $row) {
+						if (($row['status'] ?? '') === 'transferred') {
+							$k = ($row['provider_id'] ?? 0) . '::' . ($row['remote_key'] ?? '');
+							$groups[$k][$row['attachment_id'] ?? 0] = true;
+						}
+					}
+				}
+				$c = 0;
+				foreach ($groups as $att_map) {
+					if (count($att_map) > 1) {
+						$c++;
+					}
+				}
+				return $c;
+			}
 			if (strpos($query, 'COUNT(*)') !== false) {
 				if (preg_match("/meta_value = '?(\d+)'?/", $query, $m)) {
 					$pid = (int) $m[1];
@@ -540,6 +617,38 @@ if (!class_exists('Mock_WPDB')) {
 					}
 				}
 				return 0;
+			}
+			if (strpos($query, 'filechi_files') !== false) {
+				if (preg_match("/remote_key = '([^']+)'/", $query, $km)) {
+					$target_key = $km[1];
+					$exclude_id = 0;
+					if (preg_match('/attachment_id != (\d+)/', $query, $em)) {
+						$exclude_id = (int) $em[1];
+					}
+					if (isset($GLOBALS['mock_filechi_files_rows']) && is_array($GLOBALS['mock_filechi_files_rows'])) {
+						foreach ($GLOBALS['mock_filechi_files_rows'] as $row) {
+							if ($exclude_id > 0 && (int) ($row['attachment_id'] ?? 0) === $exclude_id) {
+								continue;
+							}
+							if (($row['remote_key'] ?? '') === $target_key && ($row['status'] ?? '') === 'transferred') {
+								if (strpos($query, 'SELECT remote_key') !== false) {
+									return $row['remote_key'];
+								}
+								return $row['attachment_id'] ?? 1;
+							}
+						}
+					}
+				}
+				if (preg_match("/SELECT remote_key FROM [^ ]+ WHERE [^ ]+ AND \((?:path_hash = '[^']+' OR local_path = '([^']+)'|local_path = '([^']+)').*status = 'transferred'/", $query, $rm)) {
+					$lp = !empty($rm[1]) ? $rm[1] : (!empty($rm[2]) ? $rm[2] : '');
+					if (isset($GLOBALS['mock_filechi_files_rows']) && is_array($GLOBALS['mock_filechi_files_rows'])) {
+						foreach ($GLOBALS['mock_filechi_files_rows'] as $row) {
+							if ((($row['local_path'] ?? '') === $lp || ($row['remote_key'] ?? '') === $lp) && ($row['status'] ?? '') === 'transferred') {
+								return $row['remote_key'] ?? $lp;
+							}
+						}
+					}
+				}
 			}
 			return 0;
 		}
@@ -585,6 +694,16 @@ if (!class_exists('Mock_WPDB')) {
 				}
 				return $this->get_row_override;
 			}
+			if (strpos($query, 'filechi_providers') !== false && preg_match('/WHERE id = (\d+)/', $query, $m)) {
+				$pid = (int) $m[1];
+				if (isset($GLOBALS['mock_filechi_providers'][$pid])) {
+					$p = $GLOBALS['mock_filechi_providers'][$pid];
+					if (is_array($p['settings'] ?? null)) {
+						$p['settings'] = json_encode($p['settings']);
+					}
+					return $p;
+				}
+			}
 			return null;
 		}
 
@@ -596,11 +715,145 @@ if (!class_exists('Mock_WPDB')) {
 				}
 				return $this->get_results_override;
 			}
+			if (strpos($query, "meta_key = '_wp_attached_file'") !== false && strpos($query, 'IN (') !== false) {
+				$results = array();
+				if (preg_match("/IN \(([^\)]+)\)/", $query, $m)) {
+					$vals       = array_map(function($s) { return trim($s, " '\""); }, explode(',', $m[1]));
+					$exclude_id = 0;
+					if (preg_match('/post_id != (\d+)/', $query, $em)) {
+						$exclude_id = (int) $em[1];
+					}
+					if (isset($GLOBALS['mock_post_meta']) && is_array($GLOBALS['mock_post_meta'])) {
+						foreach ($GLOBALS['mock_post_meta'] as $pid => $meta) {
+							if ($exclude_id > 0 && (int) $pid === $exclude_id) {
+								continue;
+							}
+							if (isset($meta['_wp_attached_file']) && in_array($meta['_wp_attached_file'], $vals, true)) {
+								$results[] = array('meta_value' => $meta['_wp_attached_file'], 'post_id' => $pid);
+							}
+						}
+					}
+				}
+				return $results;
+			}
+			if (strpos($query, 'filechi_files') !== false && strpos($query, 'path_hash IN (') !== false) {
+				$results = array();
+				if (preg_match("/path_hash IN \(([^\)]+)\)/", $query, $m)) {
+					$hashes     = array_map(function($s) { return trim($s, " '\""); }, explode(',', $m[1]));
+					$exclude_id = 0;
+					if (preg_match('/attachment_id != (\d+)/', $query, $em)) {
+						$exclude_id = (int) $em[1];
+					}
+					if (isset($GLOBALS['mock_filechi_files_rows']) && is_array($GLOBALS['mock_filechi_files_rows'])) {
+						foreach ($GLOBALS['mock_filechi_files_rows'] as $row) {
+							if ($exclude_id > 0 && (int) ($row['attachment_id'] ?? 0) === $exclude_id) {
+								continue;
+							}
+							if (in_array($row['path_hash'], $hashes, true) && ($row['status'] ?? '') === 'transferred') {
+								$results[] = array(
+									'path_hash'     => $row['path_hash'],
+									'local_path'    => $row['local_path'] ?? '',
+									'attachment_id' => $row['attachment_id'] ?? 0,
+								);
+							}
+						}
+					}
+				}
+				return $results;
+			}
+			if (strpos($query, 'HAVING COUNT(DISTINCT attachment_id) > 1') !== false) {
+				$groups = array();
+				if (isset($GLOBALS['mock_filechi_files_rows']) && is_array($GLOBALS['mock_filechi_files_rows'])) {
+					foreach ($GLOBALS['mock_filechi_files_rows'] as $row) {
+						if (($row['status'] ?? '') === 'transferred') {
+							$pid = (int) ($row['provider_id'] ?? 0);
+							$rk  = (string) ($row['remote_key'] ?? '');
+							$k   = $pid . '::' . $rk;
+							if (!isset($groups[$k])) {
+								$groups[$k] = array('provider_id' => $pid, 'remote_key' => $rk, 'atts' => array());
+							}
+							$groups[$k]['atts'][$row['attachment_id'] ?? 0] = true;
+						}
+					}
+				}
+				$results = array();
+				foreach ($groups as $g) {
+					if (count($g['atts']) > 1) {
+						$results[] = array(
+							'provider_id' => $g['provider_id'],
+							'remote_key'  => $g['remote_key'],
+							'att_count'   => count($g['atts']),
+						);
+					}
+				}
+				return $results;
+			}
+			if (strpos($query, 'SELECT DISTINCT attachment_id, local_path, size') !== false) {
+				$results = array();
+				if (preg_match("/provider_id = (\d+) AND remote_key = '([^']+)'/", $query, $m)) {
+					$pid  = (int) $m[1];
+					$rk   = $m[2];
+					$seen = array();
+					if (isset($GLOBALS['mock_filechi_files_rows']) && is_array($GLOBALS['mock_filechi_files_rows'])) {
+						foreach ($GLOBALS['mock_filechi_files_rows'] as $row) {
+							if ((int) ($row['provider_id'] ?? 0) === $pid && ($row['remote_key'] ?? '') === $rk && ($row['status'] ?? '') === 'transferred') {
+								$aid = (int) ($row['attachment_id'] ?? 0);
+								if (!isset($seen[$aid])) {
+									$seen[$aid] = true;
+									$results[]  = array(
+										'attachment_id' => $aid,
+										'local_path'    => $row['local_path'] ?? '',
+										'size'          => $row['size'] ?? 0,
+									);
+								}
+							}
+						}
+					}
+					usort($results, function($a, $b) {
+						return $a['attachment_id'] <=> $b['attachment_id'];
+					});
+				}
+				return $results;
+			}
+			if (strpos($query, 'filechi_files') !== false && preg_match('/attachment_id\s*=\s*(\d+)\s+AND\s+provider_id\s*=\s*(\d+)/i', $query, $m)) {
+				$aid = (int) $m[1];
+				$pid = (int) $m[2];
+				$results = array();
+				if (isset($GLOBALS['mock_filechi_files_rows']) && is_array($GLOBALS['mock_filechi_files_rows'])) {
+					foreach ($GLOBALS['mock_filechi_files_rows'] as $row) {
+						if ((int) ($row['attachment_id'] ?? 0) === $aid && (int) ($row['provider_id'] ?? 0) === $pid) {
+							$results[] = $row;
+						}
+					}
+				}
+				return $results;
+			}
 			return array();
 		}
 
 		public function get_col($query) {
 			$this->queries[] = $query;
+			if (strpos($query, 'filechi_files') !== false && strpos($query, 'remote_key IN (') !== false) {
+				$results = array();
+				if (preg_match("/remote_key IN \(([^\)]+)\)/", $query, $m)) {
+					$keys = array_map(function($s) { return trim($s, " '\""); }, explode(',', $m[1]));
+					$exclude_id = 0;
+					if (preg_match('/attachment_id != (\d+)/', $query, $em)) {
+						$exclude_id = (int) $em[1];
+					}
+					if (isset($GLOBALS['mock_filechi_files_rows']) && is_array($GLOBALS['mock_filechi_files_rows'])) {
+						foreach ($GLOBALS['mock_filechi_files_rows'] as $row) {
+							if ($exclude_id > 0 && (int) ($row['attachment_id'] ?? 0) === $exclude_id) {
+								continue;
+							}
+							if (in_array($row['remote_key'] ?? '', $keys, true) && ($row['status'] ?? '') === 'transferred') {
+								$results[] = $row['remote_key'];
+							}
+						}
+					}
+				}
+				return array_values(array_unique($results));
+			}
 			return array();
 		}
 
@@ -609,6 +862,10 @@ if (!class_exists('Mock_WPDB')) {
 				return is_null($v) ? 'NULL' : (is_scalar($v) ? (string) $v : json_encode($v));
 			}, $data);
 			$this->queries[] = "INSERT INTO $table (" . implode(', ', array_keys($data)) . ") VALUES ('" . implode("', '", $vals) . "')";
+			if (strpos($table, 'filechi_files') !== false) {
+				$data['id'] = $this->insert_id++;
+				$GLOBALS['mock_filechi_files_rows'][] = $data;
+			}
 			if (is_callable($this->on_insert)) {
 				call_user_func($this->on_insert, $table, $data);
 			}
@@ -617,6 +874,24 @@ if (!class_exists('Mock_WPDB')) {
 
 		public function update($table, $data, $where, $data_format = null, $where_format = null) {
 			$this->queries[] = "UPDATE $table SET ...";
+			if (strpos($table, 'filechi_files') !== false) {
+				if (isset($GLOBALS['mock_filechi_files_rows']) && is_array($GLOBALS['mock_filechi_files_rows'])) {
+					foreach ($GLOBALS['mock_filechi_files_rows'] as &$row) {
+						$match = true;
+						foreach ($where as $wk => $wv) {
+							if (!isset($row[$wk]) || (string) $row[$wk] !== (string) $wv) {
+								$match = false;
+								break;
+							}
+						}
+						if ($match) {
+							foreach ($data as $dk => $dv) {
+								$row[$dk] = $dv;
+							}
+						}
+					}
+				}
+			}
 			if (is_callable($this->on_update)) {
 				call_user_func($this->on_update, $table, $data, $where);
 			}

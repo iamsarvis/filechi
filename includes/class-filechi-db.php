@@ -1009,6 +1009,7 @@ class FileChi_DB {
 			'failed'      => $failed_count,
 			'given_up'    => $given_up_count,
 			'total_bytes' => $total_bytes,
+			'collisions'  => self::count_remote_key_collisions(),
 		);
 	}
 
@@ -1293,5 +1294,304 @@ class FileChi_DB {
 		}
 
 		return $count;
+	}
+
+	/**
+	 * Retrieves transferred file rows matching given path_hashes using the path_hash index.
+	 *
+	 * @param string[] $hashes Array of SHA-1 hashes of candidate local_paths.
+	 * @param int      $exclude_attachment_id Optional attachment ID to exclude.
+	 * @return array<string, int> Map of path_hash => attachment_id for taken paths.
+	 */
+	public static function get_taken_path_hashes($hashes, $exclude_attachment_id = 0) {
+		global $wpdb;
+		$table = self::get_files_table();
+
+		if (empty($hashes)) {
+			return array();
+		}
+
+		$hashes = array_unique(array_filter(array_map('sanitize_text_field', $hashes)));
+		if (empty($hashes)) {
+			return array();
+		}
+
+		$placeholders = implode(', ', array_fill(0, count($hashes), '%s'));
+		$params       = array_values($hashes);
+
+		$query = "SELECT path_hash, attachment_id FROM {$table} WHERE path_hash IN ({$placeholders}) AND status = 'transferred'";
+		if ($exclude_attachment_id > 0) {
+			$query   .= ' AND attachment_id != %d';
+			$params[] = (int) $exclude_attachment_id;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results($wpdb->prepare($query, ...$params), ARRAY_A);
+
+		$taken = array();
+		if (is_array($rows)) {
+			foreach ($rows as $row) {
+				if (!empty($row['path_hash'])) {
+					$taken[$row['path_hash']] = (int) $row['attachment_id'];
+				}
+			}
+		}
+
+		return $taken;
+	}
+
+	/**
+	 * Retrieves attached file records from postmeta matching given relative paths.
+	 *
+	 * @param string[] $paths Array of relative upload paths.
+	 * @param int      $exclude_attachment_id Optional attachment ID to exclude.
+	 * @return array<string, int> Map of relative_path => post_id for taken paths.
+	 */
+	public static function get_taken_attached_files($paths, $exclude_attachment_id = 0) {
+		global $wpdb;
+
+		if (empty($paths)) {
+			return array();
+		}
+
+		$paths = array_unique(array_filter(array_map('sanitize_text_field', $paths)));
+		if (empty($paths)) {
+			return array();
+		}
+
+		$placeholders = implode(', ', array_fill(0, count($paths), '%s'));
+		$params       = array_values($paths);
+
+		$query = "SELECT meta_value, post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value IN ({$placeholders})";
+		if ($exclude_attachment_id > 0) {
+			$query   .= ' AND post_id != %d';
+			$params[] = (int) $exclude_attachment_id;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results($wpdb->prepare($query, ...$params), ARRAY_A);
+
+		$taken = array();
+		if (is_array($rows)) {
+			foreach ($rows as $row) {
+				if (!empty($row['meta_value'])) {
+					$taken[$row['meta_value']] = (int) $row['post_id'];
+				}
+			}
+		}
+
+		return $taken;
+	}
+
+	/**
+	 * Checks if a remote key is already transferred for another attachment on a given provider (Item F13.4).
+	 *
+	 * @param int    $provider_id Provider ID.
+	 * @param string $remote_key Remote storage key.
+	 * @param int    $exclude_attachment_id Attachment ID to exclude.
+	 * @return bool True if taken by another attachment, false otherwise.
+	 */
+	public static function is_remote_key_taken($provider_id, $remote_key, $exclude_attachment_id = 0) {
+		global $wpdb;
+		$table       = self::get_files_table();
+		$provider_id = absint($provider_id);
+		$remote_key  = sanitize_text_field($remote_key);
+
+		if ($provider_id <= 0 || empty($remote_key)) {
+			return false;
+		}
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$existing_aid = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT attachment_id FROM {$table} WHERE provider_id = %d AND remote_key = %s AND status = 'transferred' AND attachment_id != %d LIMIT 1",
+				$provider_id,
+				$remote_key,
+				(int) $exclude_attachment_id
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return !empty($existing_aid);
+	}
+
+	/**
+	 * Checks if any of the given candidate remote keys are already transferred for another attachment.
+	 *
+	 * @param int      $provider_id Provider ID.
+	 * @param string[] $remote_keys Candidate remote storage keys.
+	 * @param int      $exclude_attachment_id Attachment ID to exclude.
+	 * @return string[] List of colliding remote keys.
+	 */
+	public static function find_colliding_keys($provider_id, $remote_keys, $exclude_attachment_id = 0) {
+		global $wpdb;
+		$table       = self::get_files_table();
+		$provider_id = absint($provider_id);
+
+		if ($provider_id <= 0 || empty($remote_keys)) {
+			return array();
+		}
+
+		$remote_keys = array_unique(array_filter(array_map('sanitize_text_field', $remote_keys)));
+		if (empty($remote_keys)) {
+			return array();
+		}
+
+		$placeholders = implode(', ', array_fill(0, count($remote_keys), '%s'));
+		$params       = array_merge(array($provider_id), array_values($remote_keys), array((int) $exclude_attachment_id));
+
+		$query = "SELECT DISTINCT remote_key FROM {$table} WHERE provider_id = %d AND remote_key IN ({$placeholders}) AND status = 'transferred' AND attachment_id != %d";
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_col($wpdb->prepare($query, ...$params));
+
+		return is_array($rows) ? $rows : array();
+	}
+
+	/**
+	 * Counts distinct colliding remote keys across attachments on the same provider (Item F13.5).
+	 *
+	 * @return int Number of collisions.
+	 */
+	public static function count_remote_key_collisions() {
+		global $wpdb;
+		$table = self::get_files_table();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$count = $wpdb->get_var(
+			"SELECT COUNT(*) FROM (
+				SELECT provider_id, remote_key
+				FROM {$table}
+				WHERE status = 'transferred'
+				GROUP BY provider_id, remote_key
+				HAVING COUNT(DISTINCT attachment_id) > 1
+			) as collisions"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return $count ? (int) $count : 0;
+	}
+
+	/**
+	 * Audits existing remote key collisions across different attachments (Item F13.5).
+	 *
+	 * Identifies rows sharing provider_id + remote_key with status = 'transferred'.
+	 * The lowest attachment ID is considered the owner.
+	 * For other colliding attachments:
+	 *  - If local file exists, sets prefix dup-<id>/, marks and queues re-offload.
+	 *  - Otherwise, logs that the file cannot be recovered.
+	 * Logs one event per colliding pair.
+	 *
+	 * @return array<int, array<string, mixed>> List of collision audit records.
+	 */
+	public static function find_remote_key_collisions() {
+		global $wpdb;
+		$table = self::get_files_table();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$groups = $wpdb->get_results(
+			"SELECT provider_id, remote_key, COUNT(DISTINCT attachment_id) as att_count
+			FROM {$table}
+			WHERE status = 'transferred'
+			GROUP BY provider_id, remote_key
+			HAVING COUNT(DISTINCT attachment_id) > 1",
+			ARRAY_A
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		if (empty($groups) || !is_array($groups)) {
+			return array();
+		}
+
+		$upload_dir = wp_upload_dir();
+		$basedir    = !empty($upload_dir['basedir']) ? wp_normalize_path((string) $upload_dir['basedir']) : '';
+		$audited    = array();
+
+		foreach ($groups as $group) {
+			$provider_id = (int) $group['provider_id'];
+			$remote_key  = (string) $group['remote_key'];
+
+			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT DISTINCT attachment_id, local_path, size
+					FROM {$table}
+					WHERE provider_id = %d AND remote_key = %s AND status = 'transferred'
+					ORDER BY attachment_id ASC",
+					$provider_id,
+					$remote_key
+				),
+				ARRAY_A
+			);
+			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+			if (empty($rows) || count($rows) < 2) {
+				continue;
+			}
+
+			// Lowest attachment ID is the owner
+			$owner_id = (int) $rows[0]['attachment_id'];
+
+			// For the others:
+			for ($i = 1, $count = count($rows); $i < $count; $i++) {
+				$colliding_id = (int) $rows[$i]['attachment_id'];
+				$local_path   = (string) $rows[$i]['local_path'];
+				$clean_local  = ltrim(str_replace('\\', '/', $local_path), '/');
+				$local_file   = $basedir !== '' ? $basedir . '/' . $clean_local : '';
+				$local_exists = ($local_file !== '' && file_exists($local_file));
+
+				if ($local_exists) {
+					$prefix = 'dup-' . $colliding_id . '/';
+					update_post_meta($colliding_id, '_filechi_remote_prefix', $prefix);
+					delete_post_meta($colliding_id, '_filechi_offloaded');
+					delete_post_meta($colliding_id, '_filechi_given_up');
+
+					// Delete file index for this attachment/provider so re-offload repopulates clean with prefix
+					self::delete_attachment_files_for_provider($colliding_id, $provider_id);
+
+					if (function_exists('as_schedule_single_action')) {
+						as_schedule_single_action(time() + 1, 'filechi_retry_attachment_offload', array('attachment_id' => $colliding_id), 'filechi');
+					}
+
+					self::log_transfer(
+						$colliding_id,
+						$provider_id,
+						$remote_key,
+						0,
+						'queued',
+						sprintf(__('Collision detected with owner attachment %1$d for key "%2$s". Re-offload queued under prefix "%3$s".', 'filechi'), $owner_id, $remote_key, $prefix)
+					);
+
+					$audited[] = array(
+						'provider_id'  => $provider_id,
+						'remote_key'   => $remote_key,
+						'owner_id'     => $owner_id,
+						'colliding_id' => $colliding_id,
+						'local_exists' => true,
+						'action'       => 'reoffload_queued',
+					);
+				} else {
+					self::log_transfer(
+						$colliding_id,
+						$provider_id,
+						$remote_key,
+						0,
+						'failed',
+						sprintf(__('Collision detected with owner attachment %1$d for key "%2$s". Local file missing; remote file cannot be recovered.', 'filechi'), $owner_id, $remote_key)
+					);
+
+					$audited[] = array(
+						'provider_id'  => $provider_id,
+						'remote_key'   => $remote_key,
+						'owner_id'     => $owner_id,
+						'colliding_id' => $colliding_id,
+						'local_exists' => false,
+						'action'       => 'unrecoverable',
+					);
+				}
+			}
+		}
+
+		return $audited;
 	}
 }

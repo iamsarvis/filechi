@@ -41,6 +41,12 @@ if (!class_exists('FileChi_DB')) {
 		public static function delete_attachment_files($attachment_id) {
 			return 1;
 		}
+		public static function find_colliding_keys($provider_id, $remote_keys, $exclude_attachment_id = 0) {
+			return array();
+		}
+		public static function is_remote_key_taken($provider_id, $remote_key, $exclude_attachment_id = 0) {
+			return false;
+		}
 	}
 }
 
