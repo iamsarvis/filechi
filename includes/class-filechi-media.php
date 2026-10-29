@@ -13,10 +13,20 @@ defined('ABSPATH') || exit;
 class FileChi_Media {
 
 	/**
+	 * Currently processing attachment ID for contextual filters.
+	 *
+	 * @var int
+	 */
+	public static $current_attachment_id = 0;
+
+	/**
 	 * Constructor.
 	 */
 	public function __construct() {
 		$settings = wp_parse_args(get_option('filechi_settings', array()), FileChi_Activator::default_settings());
+
+		// Layer 1 collision guard: hook wp_unique_filename (Item F13.2)
+		add_filter('wp_unique_filename', array($this, 'filter_unique_filename'), 10, 6);
 
 		// Offload all attachment types after metadata generation at late priority 999
 		add_filter('wp_generate_attachment_metadata', array($this, 'handle_attachment_metadata'), 999, 2);
@@ -51,6 +61,170 @@ class FileChi_Media {
 		}
 
 		return ltrim($normalized, '/');
+	}
+
+	/**
+	 * Filters unique filename to prevent overwriting files offloaded to remote storage.
+	 *
+	 * Checks filechi_files (transferred status) and _wp_attached_file using the path_hash index.
+	 * Also checks registered intermediate sub-size names.
+	 *
+	 * @param string        $filename Candidate unique filename.
+	 * @param string        $ext File extension.
+	 * @param string        $dir Upload target directory.
+	 * @param callable|null $unique_filename_callback Optional callback.
+	 * @param array         $alt_filenames Alternative filenames.
+	 * @param int|string    $number Counter number.
+	 * @return string Next free unique filename.
+	 */
+	public function filter_unique_filename($filename, $ext, $dir, $unique_filename_callback = null, $alt_filenames = array(), $number = null) {
+		return self::get_unique_filename($filename, $dir, self::$current_attachment_id, $ext);
+	}
+
+	/**
+	 * Resolves a unique filename by checking local disk, _wp_attached_file postmeta,
+	 * and filechi_files (transferred status) via the indexed path_hash column.
+	 * Also checks registered intermediate sub-sizes.
+	 *
+	 * @param string      $filename Candidate filename.
+	 * @param string      $dir Target uploads directory.
+	 * @param int         $exclude_attachment_id Optional attachment ID to exclude (e.g. self).
+	 * @param string|null $ext Optional file extension (including dot).
+	 * @return string Next unique filename following name-1.ext pattern.
+	 */
+	public static function get_unique_filename($filename, $dir, $exclude_attachment_id = 0, $ext = null) {
+		$filename = sanitize_file_name($filename);
+
+		$info = pathinfo($filename);
+		if ($ext === null || $ext === '') {
+			$ext = !empty($info['extension']) ? '.' . $info['extension'] : '';
+		} elseif (substr($ext, 0, 1) !== '.') {
+			$ext = '.' . $ext;
+		}
+
+		$name = basename($filename, $ext);
+		if ($name === $ext) {
+			$name = '';
+		}
+
+		$subdir     = self::get_relative_upload_path($dir);
+		$subdir     = ($subdir === '.' || $subdir === '/' || $subdir === '') ? '' : trim($subdir, '/');
+		$dir_prefix = ($subdir === '') ? '' : $subdir . '/';
+
+		// Sub-sizes for checking collision with intermediate image sizes
+		$subsizes = self::get_registered_image_subsizes();
+
+		// Determine base name without existing trailing counter
+		$base_name = $name;
+		$start_num = 0;
+		if (preg_match('/^(.+)-(\d+)$/', $name, $matches)) {
+			$base_name = $matches[1];
+			$start_num = (int) $matches[2];
+		}
+
+		// Batch candidates to resolve in ONE indexed query
+		$batch_size    = 25;
+		$current_start = $start_num;
+
+		while (true) {
+			$candidates    = array();
+			$all_hashes    = array();
+			$all_rel_paths = array();
+
+			for ($i = 0; $i < $batch_size; $i++) {
+				$num = $current_start + $i;
+				if ($num === 0) {
+					$cand_filename = $base_name . $ext;
+				} else {
+					$cand_filename = $base_name . '-' . $num . $ext;
+				}
+
+				$cand_rel    = $dir_prefix . $cand_filename;
+				$cand_hashes = array(sha1($cand_rel));
+
+				// Candidate generated sub-size names
+				if (!empty($subsizes)) {
+					$cand_name_only = basename($cand_filename, $ext);
+					foreach ($subsizes as $size_data) {
+						$w = !empty($size_data['width']) ? (int) $size_data['width'] : 0;
+						$h = !empty($size_data['height']) ? (int) $size_data['height'] : 0;
+						if ($w > 0 && $h > 0) {
+							$sub_file      = $dir_prefix . $cand_name_only . '-' . $w . 'x' . $h . $ext;
+							$cand_hashes[] = sha1($sub_file);
+						}
+					}
+				}
+
+				$candidates[] = array(
+					'filename' => $cand_filename,
+					'rel_path' => $cand_rel,
+					'hashes'   => $cand_hashes,
+				);
+
+				foreach ($cand_hashes as $h) {
+					$all_hashes[] = $h;
+				}
+				$all_rel_paths[] = $cand_rel;
+			}
+
+			// ONE indexed query for filechi_files (via path_hash)
+			$taken_hashes = FileChi_DB::get_taken_path_hashes($all_hashes, $exclude_attachment_id);
+
+			// ONE indexed query for postmeta (_wp_attached_file)
+			$taken_meta = FileChi_DB::get_taken_attached_files($all_rel_paths, $exclude_attachment_id);
+
+			foreach ($candidates as $cand) {
+				$cand_file = $cand['filename'];
+				$cand_rel  = $cand['rel_path'];
+
+				// 1. Check local disk
+				if (file_exists($dir . '/' . $cand_file)) {
+					continue;
+				}
+
+				// 2. Check _wp_attached_file in postmeta
+				if (isset($taken_meta[$cand_rel])) {
+					continue;
+				}
+
+				// 3. Check candidate main path or sub-sizes in filechi_files
+				$has_collision = false;
+				foreach ($cand['hashes'] as $h) {
+					if (isset($taken_hashes[$h])) {
+						$has_collision = true;
+						break;
+					}
+				}
+
+				if (!$has_collision) {
+					return $cand_file;
+				}
+			}
+
+			$current_start += $batch_size;
+		}
+	}
+
+	/**
+	 * Retrieves registered image sub-sizes.
+	 *
+	 * @return array<string, array{width: int, height: int, crop?: bool}>
+	 */
+	public static function get_registered_image_subsizes() {
+		if (function_exists('wp_get_registered_image_subsizes')) {
+			return wp_get_registered_image_subsizes();
+		}
+
+		$sizes = array();
+		foreach (array('thumbnail', 'medium', 'medium_large', 'large') as $size) {
+			$w = (int) get_option($size . '_size_w');
+			$h = (int) get_option($size . '_size_h');
+			if ($w > 0 || $h > 0) {
+				$sizes[$size] = array('width' => $w, 'height' => $h);
+			}
+		}
+
+		return $sizes;
 	}
 
 	/**

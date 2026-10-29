@@ -116,6 +116,13 @@ if (!function_exists('sanitize_text_field')) {
 	}
 }
 
+if (!function_exists('sanitize_file_name')) {
+	function sanitize_file_name($filename) {
+		$filename = preg_replace('/[\\\\\/:\*\?"<>\|\x00-\x1F]/', '', (string) $filename);
+		return trim($filename);
+	}
+}
+
 if (!function_exists('wp_unslash')) {
 	function wp_unslash($text) {
 		return stripslashes((string) $text);
@@ -288,6 +295,34 @@ if (!function_exists('wp_check_filetype')) {
 	}
 }
 
+if (!function_exists('wp_unique_filename')) {
+	function wp_unique_filename($dir, $filename, $unique_filename_callback = null) {
+		$filename = sanitize_file_name($filename);
+		$info     = pathinfo($filename);
+		$ext      = !empty($info['extension']) ? '.' . $info['extension'] : '';
+		$name     = basename($filename, $ext);
+
+		$number = '';
+		while (file_exists($dir . "/$filename")) {
+			$new_number = (int) $number + 1;
+			$filename   = str_replace(array("-{$number}{$ext}", "{$number}{$ext}"), "-{$new_number}{$ext}", $filename);
+			$number     = $new_number;
+		}
+
+		return apply_filters('wp_unique_filename', $filename, $ext, $dir, $unique_filename_callback, array(), $number);
+	}
+}
+
+if (!function_exists('wp_get_registered_image_subsizes')) {
+	function wp_get_registered_image_subsizes() {
+		return array(
+			'thumbnail' => array('width' => 150, 'height' => 150, 'crop' => true),
+			'medium'    => array('width' => 300, 'height' => 300, 'crop' => false),
+			'large'     => array('width' => 1024, 'height' => 1024, 'crop' => false),
+		);
+	}
+}
+
 if (!function_exists('get_option')) {
 	function get_option($option, $default = false) {
 		return $GLOBALS['mock_options'][$option] ?? $default;
@@ -438,7 +473,12 @@ if (!function_exists('add_action')) {
 }
 
 if (!function_exists('add_filter')) {
-	function add_filter($tag, $callback, $priority = 10, $accepted_args = 1) {}
+	function add_filter($tag, $callback, $priority = 10, $accepted_args = 1) {
+		$GLOBALS['wp_filter'][$tag][$priority][] = array(
+			'callback'      => $callback,
+			'accepted_args' => $accepted_args,
+		);
+	}
 }
 
 if (!function_exists('register_activation_hook')) {
@@ -472,6 +512,25 @@ if (!function_exists('did_action')) {
 
 if (!function_exists('apply_filters')) {
 	function apply_filters($tag, $value, ...$args) {
+		if (empty($GLOBALS['wp_filter'][$tag])) {
+			return $value;
+		}
+		$priorities = $GLOBALS['wp_filter'][$tag];
+		ksort($priorities);
+		foreach ($priorities as $priority => $callbacks) {
+			foreach ($callbacks as $item) {
+				if (is_array($item) && isset($item['callback'])) {
+					$cb       = $item['callback'];
+					$accepted = (int) ($item['accepted_args'] ?? 1);
+				} else {
+					$cb       = $item;
+					$accepted = 1;
+				}
+				$all_args  = array_merge(array($value), $args);
+				$pass_args = array_slice($all_args, 0, $accepted);
+				$value     = call_user_func_array($cb, $pass_args);
+			}
+		}
 		return $value;
 	}
 }
@@ -595,6 +654,52 @@ if (!class_exists('Mock_WPDB')) {
 					return call_user_func($this->get_results_override, $query, $output);
 				}
 				return $this->get_results_override;
+			}
+			if (strpos($query, "meta_key = '_wp_attached_file'") !== false && strpos($query, 'IN (') !== false) {
+				$results = array();
+				if (preg_match("/IN \(([^\)]+)\)/", $query, $m)) {
+					$vals       = array_map(function($s) { return trim($s, " '\""); }, explode(',', $m[1]));
+					$exclude_id = 0;
+					if (preg_match('/post_id != (\d+)/', $query, $em)) {
+						$exclude_id = (int) $em[1];
+					}
+					if (isset($GLOBALS['mock_post_meta']) && is_array($GLOBALS['mock_post_meta'])) {
+						foreach ($GLOBALS['mock_post_meta'] as $pid => $meta) {
+							if ($exclude_id > 0 && (int) $pid === $exclude_id) {
+								continue;
+							}
+							if (isset($meta['_wp_attached_file']) && in_array($meta['_wp_attached_file'], $vals, true)) {
+								$results[] = array('meta_value' => $meta['_wp_attached_file'], 'post_id' => $pid);
+							}
+						}
+					}
+				}
+				return $results;
+			}
+			if (strpos($query, 'filechi_files') !== false && strpos($query, 'path_hash IN (') !== false) {
+				$results = array();
+				if (preg_match("/path_hash IN \(([^\)]+)\)/", $query, $m)) {
+					$hashes     = array_map(function($s) { return trim($s, " '\""); }, explode(',', $m[1]));
+					$exclude_id = 0;
+					if (preg_match('/attachment_id != (\d+)/', $query, $em)) {
+						$exclude_id = (int) $em[1];
+					}
+					if (isset($GLOBALS['mock_filechi_files_rows']) && is_array($GLOBALS['mock_filechi_files_rows'])) {
+						foreach ($GLOBALS['mock_filechi_files_rows'] as $row) {
+							if ($exclude_id > 0 && (int) ($row['attachment_id'] ?? 0) === $exclude_id) {
+								continue;
+							}
+							if (in_array($row['path_hash'], $hashes, true) && ($row['status'] ?? '') === 'transferred') {
+								$results[] = array(
+									'path_hash'     => $row['path_hash'],
+									'local_path'    => $row['local_path'] ?? '',
+									'attachment_id' => $row['attachment_id'] ?? 0,
+								);
+							}
+						}
+					}
+				}
+				return $results;
 			}
 			return array();
 		}

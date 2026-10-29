@@ -1294,4 +1294,91 @@ class FileChi_DB {
 
 		return $count;
 	}
+
+	/**
+	 * Retrieves transferred file rows matching given path_hashes using the path_hash index.
+	 *
+	 * @param string[] $hashes Array of SHA-1 hashes of candidate local_paths.
+	 * @param int      $exclude_attachment_id Optional attachment ID to exclude.
+	 * @return array<string, int> Map of path_hash => attachment_id for taken paths.
+	 */
+	public static function get_taken_path_hashes($hashes, $exclude_attachment_id = 0) {
+		global $wpdb;
+		$table = self::get_files_table();
+
+		if (empty($hashes)) {
+			return array();
+		}
+
+		$hashes = array_unique(array_filter(array_map('sanitize_text_field', $hashes)));
+		if (empty($hashes)) {
+			return array();
+		}
+
+		$placeholders = implode(', ', array_fill(0, count($hashes), '%s'));
+		$params       = array_values($hashes);
+
+		$query = "SELECT path_hash, attachment_id FROM {$table} WHERE path_hash IN ({$placeholders}) AND status = 'transferred'";
+		if ($exclude_attachment_id > 0) {
+			$query   .= ' AND attachment_id != %d';
+			$params[] = (int) $exclude_attachment_id;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results($wpdb->prepare($query, ...$params), ARRAY_A);
+
+		$taken = array();
+		if (is_array($rows)) {
+			foreach ($rows as $row) {
+				if (!empty($row['path_hash'])) {
+					$taken[$row['path_hash']] = (int) $row['attachment_id'];
+				}
+			}
+		}
+
+		return $taken;
+	}
+
+	/**
+	 * Retrieves attached file records from postmeta matching given relative paths.
+	 *
+	 * @param string[] $paths Array of relative upload paths.
+	 * @param int      $exclude_attachment_id Optional attachment ID to exclude.
+	 * @return array<string, int> Map of relative_path => post_id for taken paths.
+	 */
+	public static function get_taken_attached_files($paths, $exclude_attachment_id = 0) {
+		global $wpdb;
+
+		if (empty($paths)) {
+			return array();
+		}
+
+		$paths = array_unique(array_filter(array_map('sanitize_text_field', $paths)));
+		if (empty($paths)) {
+			return array();
+		}
+
+		$placeholders = implode(', ', array_fill(0, count($paths), '%s'));
+		$params       = array_values($paths);
+
+		$query = "SELECT meta_value, post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value IN ({$placeholders})";
+		if ($exclude_attachment_id > 0) {
+			$query   .= ' AND post_id != %d';
+			$params[] = (int) $exclude_attachment_id;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results($wpdb->prepare($query, ...$params), ARRAY_A);
+
+		$taken = array();
+		if (is_array($rows)) {
+			foreach ($rows as $row) {
+				if (!empty($row['meta_value'])) {
+					$taken[$row['meta_value']] = (int) $row['post_id'];
+				}
+			}
+		}
+
+		return $taken;
+	}
 }
