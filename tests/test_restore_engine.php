@@ -236,7 +236,7 @@ $GLOBALS['mock_post_meta'][$att_1] = array(
 	'_filechi_provider_id' => 10,
 );
 
-$res_1 = FileChi_Restore::restore_attachment($att_1, 10, false);
+$res_1 = FileChi_Restore::restore_attachment($att_1, 10, null, false);
 assert($res_1 === true, 'Attachment with matching local file must restore as true');
 assert(empty($mock_driver->download_calls), 'Driver download must NOT be called when local file matches size');
 echo "[+] Test 1 PASSED: Local file matching size skipped download and counted as satisfied.\n";
@@ -267,7 +267,7 @@ $GLOBALS['mock_post_meta'][$att_2] = array(
 	'_filechi_provider_id' => 10,
 );
 
-$res_2 = FileChi_Restore::restore_attachment($att_2, 10, false);
+$res_2 = FileChi_Restore::restore_attachment($att_2, 10, null, false);
 assert($res_2 === false, 'Attachment with local conflict must return false');
 assert(file_get_contents($abs_2) === $local_content_2, 'Conflicting local file must NEVER be overwritten');
 assert(get_post_meta($att_2, '_filechi_restore_last_error', true) !== '', 'Conflict error must be recorded in postmeta');
@@ -305,7 +305,7 @@ $GLOBALS['mock_post_meta'][$att_3] = array(
 	'_filechi_provider_id' => 10,
 );
 
-$res_3 = FileChi_Restore::restore_attachment($att_3, 10, false);
+$res_3 = FileChi_Restore::restore_attachment($att_3, 10, null, false);
 assert($res_3 === true, 'Valid download must succeed');
 assert(file_exists($abs_3), 'Target local file must exist after restore');
 assert(file_get_contents($abs_3) === $content_3, 'Local file contents must match remote');
@@ -340,7 +340,7 @@ $GLOBALS['mock_post_meta'][$att_4] = array(
 	'_filechi_provider_id' => 10,
 );
 
-$res_4 = FileChi_Restore::restore_attachment($att_4, 10, false);
+$res_4 = FileChi_Restore::restore_attachment($att_4, 10, null, false);
 assert($res_4 === false, 'Size mismatch must fail restore');
 assert(!file_exists($abs_4), 'Corrupt file must not be renamed into target');
 assert((int) get_post_meta($att_4, '_filechi_restore_failure_count', true) === 1, 'Failure count must increment to 1');
@@ -355,7 +355,7 @@ $att_5 = 505;
 $lock_token = FileChi_Media::acquire_lock($att_5);
 assert($lock_token !== false, 'Must acquire lock on att_5');
 
-$res_5 = FileChi_Restore::restore_attachment($att_5, 10, false);
+$res_5 = FileChi_Restore::restore_attachment($att_5, 10, null, false);
 assert($res_5 === false, 'Locked attachment must be skipped');
 FileChi_Media::release_lock($att_5, $lock_token);
 echo "[+] Test 5 PASSED: Locked attachment skipped without errors.\n";
@@ -387,7 +387,7 @@ $GLOBALS['mock_post_meta'][$att_6] = array(
 );
 
 for ($attempt = 1; $attempt <= 5; $attempt++) {
-	$res_att = FileChi_Restore::restore_attachment($att_6, 10, false);
+	$res_att = FileChi_Restore::restore_attachment($att_6, 10, null, false);
 	assert($res_att === false);
 	$failures = (int) get_post_meta($att_6, '_filechi_restore_failure_count', true);
 	assert($failures === $attempt, "Failures must equal {$attempt}");
@@ -437,7 +437,7 @@ $GLOBALS['mock_post_meta'][$att_7] = array(
 );
 
 // Restore with delete_remote = true
-$res_7 = FileChi_Restore::restore_attachment($att_7, 10, true);
+$res_7 = FileChi_Restore::restore_attachment($att_7, 10, null, true);
 assert($res_7 === true, 'Restore and finalization must succeed');
 
 // Verify metadata cleanup
@@ -499,7 +499,7 @@ $mock_files_table[] = array(
 );
 
 $mock_driver->download_calls = array();
-$res_9 = FileChi_Restore::restore_attachment($att_9, 10, false);
+$res_9 = FileChi_Restore::restore_attachment($att_9, 10, null, false);
 assert($res_9 === false, 'Path traversal must be rejected');
 assert(empty($mock_driver->download_calls), 'Driver download must NOT be called for traversal path');
 assert(stripos(get_post_meta($att_9, '_filechi_restore_last_error', true), 'traversal') !== false, 'Traversal error must be logged');

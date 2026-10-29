@@ -507,16 +507,11 @@ class FileChi_Restore {
 	 *
 	 * @param int                                  $attachment_id Post ID of the attachment.
 	 * @param array<string, mixed>|int|null        $provider      Provider database record or ID.
-	 * @param FileChi_Storage_Interface|bool|null  $driver        Optional configured storage driver or delete_remote boolean.
-	 * @param bool                                 $delete_remote Whether to delete remote copies after finalization.
+	 * @param FileChi_Storage_Interface|null $driver        Optional configured storage driver.
+	 * @param bool                           $delete_remote Whether to delete remote copies after finalization.
 	 * @return bool True on success, false on failure or lock.
 	 */
 	public static function restore_attachment($attachment_id, $provider = null, $driver = null, $delete_remote = false) {
-		if (is_bool($driver)) {
-			$delete_remote = $driver;
-			$driver        = null;
-		}
-
 		$attachment_id = absint($attachment_id);
 		if (!$attachment_id) {
 			return false;
