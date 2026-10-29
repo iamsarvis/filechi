@@ -183,9 +183,21 @@ function filechi_handle_signed_download() {
 		wp_die(esc_html__('File not found.', 'filechi'), 404);
 	}
 
-	// Serve only keys that exist as transferred for that provider in filechi_logs
+	// Serve only keys that exist as transferred for that provider in filechi_files
 	if (!FileChi_DB::is_file_transferred($provider_id, $file)) {
 		wp_die(esc_html__('File not found.', 'filechi'), 404);
+	}
+
+	// Resolve remote storage key if attachment uses a remote prefix (Item F13.3)
+	$remote_key = $file;
+	global $wpdb;
+	if (isset($wpdb) && is_object($wpdb)) {
+		$table_files = FileChi_DB::get_files_table();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Safe table name interpolation.
+		$stored_key = $wpdb->get_var($wpdb->prepare("SELECT remote_key FROM {$table_files} WHERE provider_id = %d AND (path_hash = %s OR local_path = %s OR remote_key = %s) AND status = 'transferred' LIMIT 1", $provider_id, sha1($file), $file, $file));
+		if (!empty($stored_key)) {
+			$remote_key = (string) $stored_key;
+		}
 	}
 
 	// Retrieve specific provider bound to the download token
@@ -201,7 +213,7 @@ function filechi_handle_signed_download() {
 
 	// Verify remote file existence before sending any headers
 	try {
-		$file_exists = $driver->exists($file);
+		$file_exists = $driver->exists($remote_key);
 	} catch (\Exception $e) {
 		wp_die(esc_html__('Remote storage connection error.', 'filechi'), 500);
 	}
@@ -213,7 +225,7 @@ function filechi_handle_signed_download() {
 	// Retrieve file size when protocol provides it cheaply
 	$size = -1;
 	try {
-		$size = $driver->get_size($file);
+		$size = $driver->get_size($remote_key);
 	} catch (\Exception $e) {
 		$size = -1;
 	}
@@ -242,7 +254,7 @@ function filechi_handle_signed_download() {
 	}
 
 	// Stream chunk by chunk directly to output without loading file into memory
-	$success = $driver->stream_to_output($file, 1048576);
+	$success = $driver->stream_to_output($remote_key, 1048576);
 	if (!$success) {
 		error_log(sprintf('FileChi: Streaming failed for file "%s" from provider ID %d. Error: %s', $file, $provider_id, $driver->get_last_error()));
 		exit;

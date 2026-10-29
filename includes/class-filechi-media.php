@@ -447,13 +447,36 @@ class FileChi_Media {
 		// Retrieve existing file records for this attachment and provider from filechi_files (Item L1.5)
 		$existing_files = FileChi_DB::get_attachment_files_by_path($attachment_id, $provider['id']);
 
+		// Layer 2 collision guard: decide remote prefix before first upload (Item F13.3)
+		$stored_prefix         = (string) get_post_meta($attachment_id, '_filechi_remote_prefix', true);
+		$has_transferred_files = false;
+		if (!empty($existing_files)) {
+			foreach ($existing_files as $ex) {
+				if (isset($ex['status']) && $ex['status'] === 'transferred') {
+					$has_transferred_files = true;
+					break;
+				}
+			}
+		}
+
+		if (!$has_transferred_files && $stored_prefix === '') {
+			$candidate_keys = array_keys($files_to_process);
+			$colliding_keys = FileChi_DB::find_colliding_keys($provider['id'], $candidate_keys, $attachment_id);
+			if (!empty($colliding_keys)) {
+				$new_prefix = 'dup-' . $attachment_id . '/';
+				update_post_meta($attachment_id, '_filechi_remote_prefix', $new_prefix);
+			}
+		}
+
 		foreach ($files_to_process as $rel_path => $file_info) {
+			$remote_key = self::get_remote_key($attachment_id, $rel_path);
+
 			// Item 7.3 & L1.5: Do not redo finished work. Skip files whose file record for this provider
 			// is 'transferred' and whose remote copy still exists.
 			if (isset($existing_files[$rel_path])) {
 				$prev_status = $existing_files[$rel_path]['status'];
 				if ($prev_status === 'transferred') {
-					if ($driver->exists($rel_path)) {
+					if ($driver->exists($remote_key)) {
 						// Already satisfied and remote copy confirmed: skip without re-uploading
 						continue;
 					}
@@ -466,12 +489,12 @@ class FileChi_Media {
 
 			if ($local_exists) {
 				$filesize = (int) filesize($abs_path);
-				$success  = $driver->upload($abs_path, $rel_path);
+				$success  = $driver->upload($abs_path, $remote_key);
 
 				if ($success) {
 					$uploaded_files[$rel_path] = $abs_path;
 					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'transferred');
-					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'transferred', array('size' => $filesize));
+					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'transferred', array('size' => $filesize, 'remote_key' => $remote_key));
 				} else {
 					$all_succeeded = false;
 					$reason        = $driver->get_last_error();
@@ -479,15 +502,15 @@ class FileChi_Media {
 						$reason = __('Upload or verification failed for remote storage.', 'filechi');
 					}
 					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $filesize, 'failed', $reason);
-					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'failed', array('size' => $filesize, 'last_error' => $reason));
+					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'failed', array('size' => $filesize, 'remote_key' => $remote_key, 'last_error' => $reason));
 					update_post_meta($attachment_id, '_filechi_last_error', $reason);
 					break;
 				}
 			} else {
 				// Local file missing: check remote copy
-				$remote_exists = $driver->exists($rel_path);
+				$remote_exists = $driver->exists($remote_key);
 				if ($remote_exists) {
-					$remote_size = $driver->get_size($rel_path);
+					$remote_size = $driver->get_size($remote_key);
 					if ($expected_size > 0 && $remote_size >= 0 && $remote_size !== $expected_size) {
 						$all_succeeded = false;
 						$reason        = sprintf(
@@ -496,7 +519,7 @@ class FileChi_Media {
 							$remote_size
 						);
 						FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, max(0, $remote_size), 'failed', $reason);
-						FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'failed', array('size' => max(0, $remote_size), 'last_error' => $reason));
+						FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'failed', array('size' => max(0, $remote_size), 'remote_key' => $remote_key, 'last_error' => $reason));
 						update_post_meta($attachment_id, '_filechi_last_error', $reason);
 						break;
 					}
@@ -504,14 +527,14 @@ class FileChi_Media {
 					// Count file as satisfied and log reconciled
 					$logged_size = ($remote_size >= 0) ? $remote_size : $expected_size;
 					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, $logged_size, 'reconciled');
-					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'transferred', array('size' => $logged_size));
+					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'transferred', array('size' => $logged_size, 'remote_key' => $remote_key));
 				} else {
 					// Missing locally AND remotely: real failure, no retries
 					$all_succeeded  = false;
 					$is_unretryable = true;
 					$reason         = sprintf('File not found locally or remotely: %s', $rel_path);
 					FileChi_DB::log_transfer($attachment_id, $provider['id'], $rel_path, 0, 'failed', $reason);
-					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'failed', array('size' => 0, 'last_error' => $reason));
+					FileChi_DB::record_file_state($attachment_id, $provider['id'], $rel_path, 'failed', array('size' => 0, 'remote_key' => $remote_key, 'last_error' => $reason));
 					update_post_meta($attachment_id, '_filechi_last_error', $reason);
 					break;
 				}
@@ -654,8 +677,45 @@ class FileChi_Media {
 	 * @param string $path File path or relative key.
 	 * @return bool
 	 */
+	/**
+	 * Returns the remote key for a given attachment and local path,
+	 * prepending any stored _filechi_remote_prefix (e.g. 'dup-<attachment_id>/').
+	 *
+	 * @param int    $attachment_id Attachment ID.
+	 * @param string $local_path Relative upload path.
+	 * @return string Remote storage key.
+	 */
+	public static function get_remote_key($attachment_id, $local_path) {
+		$local_path = (string) $local_path;
+		if ($local_path === '') {
+			return '';
+		}
+
+		$prefix = (string) get_post_meta($attachment_id, '_filechi_remote_prefix', true);
+		if ($prefix !== '') {
+			if (strncmp($local_path, $prefix, strlen($prefix)) === 0) {
+				return $local_path;
+			}
+			return $prefix . ltrim($local_path, '/');
+		}
+
+		return $local_path;
+	}
+
+	/**
+	 * Determines whether a file path targets a protected WooCommerce upload.
+	 *
+	 * A file is protected if and only if its normalized relative path starts with woocommerce_uploads/
+	 * (AGENTS.md §7). If passed a remote key with a dup-<id>/ prefix, strips that prefix first.
+	 *
+	 * @param string $path File path or relative key.
+	 * @return bool
+	 */
 	public static function is_protected_file($path) {
 		$clean_path = ltrim(str_replace('\\', '/', (string) $path), '/');
+		if (strncmp($clean_path, 'dup-', 4) === 0) {
+			$clean_path = (string) preg_replace('#^dup-\d+/#', '', $clean_path);
+		}
 
 		return strncmp($clean_path, 'woocommerce_uploads/', 20) === 0;
 	}
@@ -666,7 +726,8 @@ class FileChi_Media {
 	 * @param string $url Original attachment URL.
 	 * @param int    $attachment_id Attachment post ID.
 	 * @return string Remote URL if offloaded.
-	 */	public function filter_attachment_url($url, $attachment_id) {
+	 */
+	public function filter_attachment_url($url, $attachment_id) {
 		try {
 			$is_offloaded = get_post_meta($attachment_id, '_filechi_offloaded', true);
 			if (!$is_offloaded) {
@@ -685,12 +746,14 @@ class FileChi_Media {
 				return $url;
 			}
 
+			$remote_key = self::get_remote_key($attachment_id, $attached_file);
+
 			// Never expose permanent public URLs for protected WooCommerce downloads
 			if (self::is_protected_file($attached_file)) {
-				return $driver->get_signed_url($attached_file);
+				return $driver->get_signed_url($remote_key);
 			}
 
-			return $driver->get_url($attached_file);
+			return $driver->get_url($remote_key);
 		} catch (FileChi_Path_Exception $e) {
 			FileChi_Path::log_error($attached_file ?? '', $e->getMessage());
 			return $url;
@@ -732,8 +795,9 @@ class FileChi_Media {
 				$parsed_path = wp_parse_url($source['url'], PHP_URL_PATH);
 				$filename    = basename((string) $parsed_path);
 				$rel_path    = $dir_prefix . $filename;
+				$remote_key  = self::get_remote_key($attachment_id, $rel_path);
 				try {
-					$source['url'] = $driver->get_url($rel_path);
+					$source['url'] = $driver->get_url($remote_key);
 				} catch (FileChi_Path_Exception $e) {
 					FileChi_Path::log_error($rel_path, $e->getMessage());
 				}
@@ -782,8 +846,9 @@ class FileChi_Media {
 			$parsed_path = wp_parse_url($image[0], PHP_URL_PATH);
 			$filename    = basename((string) $parsed_path);
 			$rel_path    = $dir_prefix . $filename;
+			$remote_key  = self::get_remote_key($attachment_id, $rel_path);
 			try {
-				$image[0] = $driver->get_url($rel_path);
+				$image[0] = $driver->get_url($remote_key);
 			} catch (FileChi_Path_Exception $e) {
 				FileChi_Path::log_error($rel_path, $e->getMessage());
 			}
@@ -861,7 +926,8 @@ class FileChi_Media {
 		$files_to_delete = array_unique($files_to_delete);
 
 		foreach ($files_to_delete as $rel_path) {
-			$deleted = $driver->delete($rel_path);
+			$remote_key = self::get_remote_key($attachment_id, $rel_path);
+			$deleted    = $driver->delete($remote_key);
 			if ($deleted) {
 				FileChi_DB::log_transfer($attachment_id, $provider_id, $rel_path, 0, 'deleted');
 			} else {

@@ -41,6 +41,10 @@ class FileChi_Storage_Factory {
 			$provider = FileChi_DB::get_provider($provider_id, true);
 		}
 
+		if (is_array($provider) && !empty($provider['id']) && isset(self::$instances[(int) $provider['id']])) {
+			return self::$instances[(int) $provider['id']];
+		}
+
 		if (!is_array($provider) || empty($provider['driver'])) {
 			return null;
 		}
@@ -101,6 +105,16 @@ class FileChi_Storage_Factory {
 			return null;
 		}
 		return self::create($default_provider);
+	}
+
+	/**
+	 * Sets or overrides a driver instance for a provider ID (useful in testing).
+	 *
+	 * @param int                     $provider_id Provider ID.
+	 * @param FileChi_Storage_Interface $instance  Driver instance.
+	 */
+	public static function set_instance($provider_id, $instance) {
+		self::$instances[(int) $provider_id] = $instance;
 	}
 
 	/**

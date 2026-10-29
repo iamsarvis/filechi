@@ -1381,4 +1381,37 @@ class FileChi_DB {
 
 		return $taken;
 	}
+
+	/**
+	 * Checks if any of the given candidate remote keys are already transferred for another attachment.
+	 *
+	 * @param int      $provider_id Provider ID.
+	 * @param string[] $remote_keys Candidate remote storage keys.
+	 * @param int      $exclude_attachment_id Attachment ID to exclude.
+	 * @return string[] List of colliding remote keys.
+	 */
+	public static function find_colliding_keys($provider_id, $remote_keys, $exclude_attachment_id = 0) {
+		global $wpdb;
+		$table       = self::get_files_table();
+		$provider_id = absint($provider_id);
+
+		if ($provider_id <= 0 || empty($remote_keys)) {
+			return array();
+		}
+
+		$remote_keys = array_unique(array_filter(array_map('sanitize_text_field', $remote_keys)));
+		if (empty($remote_keys)) {
+			return array();
+		}
+
+		$placeholders = implode(', ', array_fill(0, count($remote_keys), '%s'));
+		$params       = array_merge(array($provider_id), array_values($remote_keys), array((int) $exclude_attachment_id));
+
+		$query = "SELECT DISTINCT remote_key FROM {$table} WHERE provider_id = %d AND remote_key IN ({$placeholders}) AND status = 'transferred' AND attachment_id != %d";
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_col($wpdb->prepare($query, ...$params));
+
+		return is_array($rows) ? $rows : array();
+	}
 }

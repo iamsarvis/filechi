@@ -105,8 +105,9 @@ class FileChi_WooCommerce {
 		}
 
 		try {
+			$remote_key = FileChi_Media::get_remote_key($attachment_id, $relative_key);
 			// Return time-limited signed download URL
-			$signed_url = $driver->get_signed_url($relative_key, $expiry);
+			$signed_url = $driver->get_signed_url($remote_key, $expiry);
 			$this->signed_urls[$signed_url] = true;
 			return $signed_url;
 		} catch (\Exception $e) {
